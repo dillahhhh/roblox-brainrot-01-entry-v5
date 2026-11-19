@@ -1,15 +1,18 @@
--- Main.server.luau — Pasar Brainrot (roblox-brainrot-01, Stage 2)
+-- Main.server.luau — Pasar Brainrot (roblox-brainrot-01, Stage 3)
 -- SATU-SATUNYA Script server dan SATU-SATUNYA composition root.
--- Stage 2: require Config + Economy + DataStore, bangun dunia 3D saat
--- runtime, buat semua RemoteEvent, kelola lifecycle pemain dengan
+-- Stage 3: require Config + Economy + DataStore + Steal, bangun dunia 3D
+-- saat runtime, buat semua RemoteEvent, kelola lifecycle pemain dengan
 -- load gating + LoadToken + save-sebelum-cleanup, wire Place/Sell/
--- Rebirth ke Economy, dan jalankan loop utama 1 detik (income tick).
--- Steal baru di-require Stage 3, Flood Stage 4.
+-- Rebirth ke Economy, StealRequest ke Steal, LockRequest + barrier +
+-- auto-unlock ditangani Main sendiri, dan jalankan loop utama 1 detik
+-- (income tick + lock expiry tick).
+-- Flood baru di-require Stage 4.
 -- Spesifikasi: DESIGN.md bagian 16, 17, 20.3 + MAIN-SERVER-PLAN.md.
 
 local Config = require(game:GetService("ReplicatedStorage").Shared.Config)
 local Economy = require(script.Parent.Economy)
 local DataStore = require(script.Parent.DataStore)
+local Steal = require(script.Parent.Steal)
 
 local PlayersService = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -452,6 +455,36 @@ end
 -- Base: assign / release / papan nama
 -- ---------------------------------------------------------------------------
 
+-- Lock base (DESIGN.md 19.1, Stage 3): status + visual kaca milik Main.
+-- isLocked: Locked true + LockExpiresAt ada + timer belum lewat.
+local function isLocked(player, now)
+	local state = Players[player]
+	if state == nil then
+		return false
+	end
+	return state.Locked == true
+		and state.LockExpiresAt ~= nil
+		and now < state.LockExpiresAt
+end
+
+-- Tampilkan/sembunyikan kaca lock base: terkunci -> Transparency 0.5 +
+-- CanCollide true; buka -> Transparency 1 + CanCollide false.
+local function setLockVisual(baseIdx, locked)
+	local visuals = BaseVisuals[baseIdx]
+	if not visuals or not visuals.GlassParts then
+		return
+	end
+	for _, glass in ipairs(visuals.GlassParts) do
+		if locked then
+			glass.Transparency = 0.5
+			glass.CanCollide = true
+		else
+			glass.Transparency = 1
+			glass.CanCollide = false
+		end
+	end
+end
+
 local function refreshOwnerBoard(baseIdx)
 	local visuals = BaseVisuals[baseIdx]
 	if not visuals then
@@ -515,6 +548,8 @@ local function releaseBase(player)
 			end
 		end
 	end
+	-- Kaca lock disembunyikan saat base dilepas (pemilik keluar).
+	setLockVisual(baseIdx, false)
 	BaseOwner[baseIdx] = nil
 	state.Base = nil
 	refreshOwnerBoard(baseIdx)
@@ -819,6 +854,132 @@ local function onRebirthRequest(player)
 	end
 end
 
+-- Handler StealRequest (Stage 3): cek isLoadReady dulu, lalu
+-- Steal.trySteal(Players, thief, baseIdx, slotIdx, Remotes, World).
+-- StealResult di-fire modul lewat Remotes; Main hanya memperbarui
+-- visual slot korban (kosong) + visual carried pencuri bila sukses.
+local function onStealRequest(player, baseIdx, slotIdx)
+	if not isLoadReady(player) then
+		notifyLoadNotReady(player)
+		return
+	end
+	local ok, _msg, victim, _item = Steal.trySteal(Players, player, baseIdx, slotIdx, Remotes, World)
+	if ok and victim ~= nil then
+		refreshSlotVisual(baseIdx, slotIdx)
+		refreshCarriedVisual(player)
+	end
+end
+
+-- Handler LockRequest (Stage 3, DESIGN.md 19.1): lock = state + visual
+-- milik Main. Load gating: "loading" ditolak; "failed"/"corrupt"
+-- DIIZINKAN lock (lock tidak mengubah data simpanan, 16.5).
+local function onLockRequest(player, locked)
+	if type(locked) ~= "boolean" then
+		return
+	end
+	local state = Players[player]
+	if not state then
+		return
+	end
+	if state.LoadStatus == "loading" then
+		notifyLoadNotReady(player)
+		return
+	end
+	if state.Base == nil then
+		Remotes.Notify:FireClient(player, "Kamu belum punya base.")
+		return
+	end
+	local baseIdx = state.Base
+	local now = os.clock()
+	if locked then
+		if isLocked(player, now) then
+			-- Sudah terkunci (belum kedaluwarsa) -> PERPANJANG timer.
+			state.LockExpiresAt = now + Config.LOCK_DURATION
+			Remotes.Notify:FireClient(player, "Lock diperpanjang 30 detik")
+		else
+			state.Locked = true
+			state.LockExpiresAt = now + Config.LOCK_DURATION
+			setLockVisual(baseIdx, true)
+			Remotes.Notify:FireClient(player, "Base terkunci 30 detik")
+		end
+	else
+		state.Locked = false
+		state.LockExpiresAt = nil
+		setLockVisual(baseIdx, false)
+		Remotes.Notify:FireClient(player, "Base dibuka")
+	end
+end
+
+-- Tick auto-unlock 1 detik (Stage 3): kalau Locked dan timer habis ->
+-- buka kunci, sembunyikan kaca, Notify "Lock base habis".
+local function lockExpiryTick()
+	local now = os.clock()
+	for player, state in pairs(Players) do
+		if state.Locked and state.LockExpiresAt ~= nil and now >= state.LockExpiresAt then
+			state.Locked = false
+			state.LockExpiresAt = nil
+			if state.Base ~= nil then
+				setLockVisual(state.Base, false)
+			end
+			Remotes.Notify:FireClient(player, "Lock base habis")
+		end
+	end
+end
+
+-- Barrier lock (DESIGN.md 19.1, Stage 3): Touched di tiap part kaca
+-- lock tiap base. Pemain BUKAN pemilik yang menyentuh saat base
+-- terkunci di-teleport keluar ke (DoorX +/- 6, 4, zCenter): base kiri
+-- (xCenter -68, DoorX -41) -> x = -47; base kanan (xCenter +68,
+-- DoorX +41) -> x = +47. Pemilik SELALU lolos (tidak di-teleport).
+-- Saat tidak terkunci barrier tidak menghalangi (CanCollide false,
+-- Transparency 1); handler tetap memeriksa isLocked.
+local LockTeleportAt = {} -- [Player] -> os.clock() teleport terakhir (debounce 1 detik)
+local function connectLockBarriers()
+	for baseIdx = 1, Config.BASE_COUNT do
+		local visuals = BaseVisuals[baseIdx]
+		if visuals and visuals.GlassParts then
+			local xCenter = Config.BASE_X[(baseIdx <= 4) and 1 or 2]
+			local row = (baseIdx <= 4) and baseIdx or (baseIdx - 4)
+			local zCenter = Config.BASE_Z[row]
+			local doorX = (xCenter < 0) and (xCenter + 27) or (xCenter - 27)
+			local targetX = (xCenter < 0) and (doorX - 6) or (doorX + 6)
+			for _, glass in ipairs(visuals.GlassParts) do
+				glass.Touched:Connect(function(otherPart)
+					local character = otherPart.Parent
+					local toucher = nil
+					if character ~= nil then
+						toucher = PlayersService:GetPlayerFromCharacter(character)
+					end
+					if toucher == nil then
+						return
+					end
+					-- Pemilik base SELALU lolos.
+					if BaseOwner[baseIdx] == toucher then
+						return
+					end
+					local owner = BaseOwner[baseIdx]
+					if owner == nil then
+						return
+					end
+					if not isLocked(owner, os.clock()) then
+						return
+					end
+					local lastTeleport = LockTeleportAt[toucher]
+					local now = os.clock()
+					if lastTeleport ~= nil and now - lastTeleport < 1 then
+						return
+					end
+					LockTeleportAt[toucher] = now
+					local hrp = character:FindFirstChild("HumanoidRootPart")
+					if hrp ~= nil then
+						hrp.CFrame = CFrame.new(targetX, 4, zCenter)
+					end
+				end)
+			end
+		end
+	end
+end
+
 -- Tick income 1 detik (Stage 2): Economy.addIncome(Players, Remotes).
 local function incomeTick()
 	Economy.addIncome(Players, Remotes)
@@ -928,6 +1089,7 @@ local function onPlayerRemoving(player)
 		state.LoadToken = nil
 	end
 	destroyCarriedModel(player)
+	LockTeleportAt[player] = nil
 	releaseBase(player)
 	Players[player] = nil
 end
@@ -954,17 +1116,21 @@ end
 
 createRemotes()
 buildWorld()
+connectLockBarriers()
 
 PlayersService.PlayerAdded:Connect(onPlayerAdded)
 PlayersService.PlayerRemoving:Connect(onPlayerRemoving)
 game:BindToClose(onBindToClose)
 
 -- Handler gameplay Stage 2: Place/Sell/Rebirth -> Economy.
--- StealRequest / ClaimRequest / DebugFlood BELUM di-wire (Stage 3/4);
+-- Handler gameplay Stage 3: StealRequest -> Steal, LockRequest -> Main.
+-- ClaimRequest / DebugFlood BELUM di-wire (Stage 4);
 -- tidak ada handler yang memanggil modul yang belum ada.
 Remotes.PlaceRequest.OnServerEvent:Connect(onPlaceRequest)
 Remotes.SellRequest.OnServerEvent:Connect(onSellRequest)
 Remotes.RebirthRequest.OnServerEvent:Connect(onRebirthRequest)
+Remotes.StealRequest.OnServerEvent:Connect(onStealRequest)
+Remotes.LockRequest.OnServerEvent:Connect(onLockRequest)
 
 -- Pemain yang sudah ada sebelum script jalan (misal Play Solo di Studio).
 for _, player in ipairs(PlayersService:GetPlayers()) do
@@ -973,10 +1139,12 @@ end
 
 -- Loop utama 1 detik (SATU-SATUNYA loop; milik Main).
 -- Stage 2: tambah incomeTick -> Economy.addIncome(Players, Remotes).
--- Lock expiry (Stage 3), flood + crate expiry (Stage 4) menyusul.
+-- Stage 3: tambah lockExpiryTick (auto-unlock, DESIGN.md 19.1).
+-- Flood + crate expiry (Stage 4) menyusul.
 task.spawn(function()
 	while true do
 		task.wait(1)
 		incomeTick()
+		lockExpiryTick()
 	end
 end)
