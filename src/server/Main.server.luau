@@ -1226,6 +1226,21 @@ local function buildVendorCarts()
 	end
 end
 
+-- FIX ROUND 9 (20 Nov) — FORWARD DECLARATION, jangan dihapus:
+-- `buildExhibitionTable` (di bawah) memanggil `createBrainrotModel`,
+-- tapi definisi fungsinya baru ada di bawah, SETELAH
+-- buildExhibitionTable. Aturan lexical scoping
+-- Lua: di dalam buildExhibitionTable, nama itu merujuk ke GLOBAL
+-- (nil), bukan ke local yang dideklarasikan belakangan — pemanggilan
+-- di buildExhibitionTable melempar "attempt to call a nil value" dan
+-- mematikan buildWorld + seluruh script Main saat startup (conveyor
+-- tidak pernah spawn, pameran kosong). Deklarasi di sini membuat
+-- `createBrainrotModel` terlihat sebagai local SEBELUM
+-- buildExhibitionTable didefinisikan; penugasan fungsinya di bawah
+-- (tanpa `local` kedua) mengisi local yang sama. Isi fungsi TIDAK
+-- berubah — hanya urutan deklarasi.
+local createBrainrotModel
+
 -- Meja pameran di sebelah spawn (FIX ROUND 8, 20 Nov): satu meja
 -- panjang di TIMUR spawn (pusat x = 32, z = 168 — sejajar spawn,
 -- 11 stud di timur tepi SpawnLocation x = 8), memajang KE-7 jenis
@@ -1664,7 +1679,10 @@ end
 -- PivotTo(CFrame.new(posisi permukaan)) meletakkannya tepat di atas
 -- permukaan. Warna badan dari BRAINROT_BODY_COLORS (binatangnya);
 -- rarity terbaca dari kalung + aura + label.
-local function createBrainrotModel(kind, scale)
+-- FIX ROUND 9: TANPA `local` — mengisi forward declaration di atas
+-- buildExhibitionTable (local function kedua akan membuat local BARU
+-- yang menutupi forward declaration dan bug kembali).
+createBrainrotModel = function(kind, scale)
 	local entry = Config.Roster[kind]
 	if entry == nil then
 		return nil
