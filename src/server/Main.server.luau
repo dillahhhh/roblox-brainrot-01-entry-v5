@@ -1,12 +1,15 @@
--- Main.server.luau — Pasar Brainrot (roblox-brainrot-01, Stage 1)
+-- Main.server.luau — Pasar Brainrot (roblox-brainrot-01, Stage 2)
 -- SATU-SATUNYA Script server dan SATU-SATUNYA composition root.
--- Stage 1: require Config SAJA, bangun dunia 3D saat runtime, buat semua
--- RemoteEvent, kelola lifecycle pemain (tanpa DataStore, tanpa load),
--- dan jalankan loop utama 1 detik (masih kosong).
--- Economy / DataStore baru di-require Stage 2, Steal Stage 3, Flood Stage 4.
--- Spesifikasi: DESIGN.md bagian 16, 20.3 + MAIN-SERVER-PLAN.md.
+-- Stage 2: require Config + Economy + DataStore, bangun dunia 3D saat
+-- runtime, buat semua RemoteEvent, kelola lifecycle pemain dengan
+-- load gating + LoadToken + save-sebelum-cleanup, wire Place/Sell/
+-- Rebirth ke Economy, dan jalankan loop utama 1 detik (income tick).
+-- Steal baru di-require Stage 3, Flood Stage 4.
+-- Spesifikasi: DESIGN.md bagian 16, 17, 20.3 + MAIN-SERVER-PLAN.md.
 
 local Config = require(game:GetService("ReplicatedStorage").Shared.Config)
+local Economy = require(script.Parent.Economy)
+local DataStore = require(script.Parent.DataStore)
 
 local PlayersService = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -304,6 +307,7 @@ local function buildOneBase(baseIdx, xCenter, zCenter)
 		GlassParts = glassParts,
 		OwnerLabel = ownerLabel,
 		Headshot = headshot,
+		SlotModels = {}, -- [slotIdx] -> Model Brainrot di pedestal | nil
 	}
 	BaseOwner[baseIdx] = nil
 end
@@ -493,14 +497,24 @@ local function assignBase(player)
 end
 
 -- Membersihkan base milik pemain (slot + visual dihapus, base bebas lagi).
--- Stage 1: belum ada visual slot (slot diisi Stage 2+); yang dibersihkan
--- di sini adalah kepemilikan base + papan nama.
+-- Visual slot di pedestal dihancurkan di sini agar tidak ada model
+-- Brainrot yang tertinggal setelah pemiliknya keluar.
 local function releaseBase(player)
 	local state = Players[player]
 	if not state or not state.Base then
 		return
 	end
 	local baseIdx = state.Base
+	local visuals = BaseVisuals[baseIdx]
+	if visuals and visuals.SlotModels then
+		for i = 1, Config.SLOT_COUNT do
+			local model = visuals.SlotModels[i]
+			if model then
+				model:Destroy()
+				visuals.SlotModels[i] = nil
+			end
+		end
+	end
 	BaseOwner[baseIdx] = nil
 	state.Base = nil
 	refreshOwnerBoard(baseIdx)
@@ -511,9 +525,308 @@ local function getPlayerState(player)
 end
 
 -- ---------------------------------------------------------------------------
--- Lifecycle pemain — STAGE 1 (tanpa DataStore, tanpa load, tanpa save).
--- LoadStatus dibuat "ok" sejak awal; TIDAK ADA LoadToken, TIDAK ADA
--- load gating. (DESIGN.md 20.3 Stage 1 + MAIN-SERVER-PLAN langkah 4A.)
+-- Visual Brainrot + load gating + handler gameplay (STAGE 2).
+-- Main pemilik visual: model Brainrot dibuat/dihancurkan di sini dari
+-- state (modul tidak pernah membuat Instance, DESIGN.md 16.2).
+-- ---------------------------------------------------------------------------
+
+local CarriedModels = {} -- [Player] -> Model Brainrot yang dibawa | nil
+
+-- Ciri khas tiap Brainrot (DESIGN.md 3): badan + kepala + mata +
+-- satu ciri pembeda. Ukuran/offset dalam satuan skala 1 (dikalikan
+-- scale saat dibuat: pedestal 2.0, dibawa 1.4, peti 1.6 di Stage 4).
+local BRAINROT_FEATURES = {
+	AyamIkan = {
+		{ Name = "Beak", Size = Vector3.new(0.3, 0.25, 0.4), Offset = Vector3.new(0, 1.95, 0.75), Color = Color3.fromRGB(255, 150, 0) },
+		{ Name = "Comb", Size = Vector3.new(0.5, 0.35, 0.15), Offset = Vector3.new(0, 2.75, 0), Color = Color3.fromRGB(220, 40, 40) },
+	},
+	BabiTerbang = {
+		{ Name = "WingL", Size = Vector3.new(0.9, 0.08, 0.6), Offset = Vector3.new(-1.1, 1.1, 0), Color = Color3.fromRGB(245, 245, 245) },
+		{ Name = "WingR", Size = Vector3.new(0.9, 0.08, 0.6), Offset = Vector3.new(1.1, 1.1, 0), Color = Color3.fromRGB(245, 245, 245) },
+	},
+	AnjingEsTeh = {
+		{ Name = "EarL", Size = Vector3.new(0.3, 0.6, 0.3), Offset = Vector3.new(-0.45, 2.8, 0), Color = Color3.fromRGB(120, 70, 30) },
+		{ Name = "EarR", Size = Vector3.new(0.3, 0.6, 0.3), Offset = Vector3.new(0.45, 2.8, 0), Color = Color3.fromRGB(120, 70, 30) },
+		{ Name = "Snout", Size = Vector3.new(0.5, 0.4, 0.4), Offset = Vector3.new(0, 1.85, 0.65), Color = Color3.fromRGB(200, 160, 110) },
+	},
+	KucingRendang = {
+		{ Name = "EarL", Size = Vector3.new(0.35, 0.5, 0.15), Offset = Vector3.new(-0.4, 2.8, 0), Color = Color3.fromRGB(60, 60, 60) },
+		{ Name = "EarR", Size = Vector3.new(0.35, 0.5, 0.15), Offset = Vector3.new(0.4, 2.8, 0), Color = Color3.fromRGB(60, 60, 60) },
+		{ Name = "Tail", Size = Vector3.new(0.25, 0.9, 0.25), Offset = Vector3.new(0, 0.9, -0.95), Color = Color3.fromRGB(60, 60, 60) },
+	},
+	BeruangDurian = {
+		{ Name = "Spike1", Size = Vector3.new(0.3, 0.5, 0.3), Offset = Vector3.new(-0.4, 1.7, 0), Color = Color3.fromRGB(30, 100, 40) },
+		{ Name = "Spike2", Size = Vector3.new(0.3, 0.5, 0.3), Offset = Vector3.new(0, 1.85, 0), Color = Color3.fromRGB(30, 100, 40) },
+		{ Name = "Spike3", Size = Vector3.new(0.3, 0.5, 0.3), Offset = Vector3.new(0.4, 1.7, 0), Color = Color3.fromRGB(30, 100, 40) },
+	},
+	HarimauApi = {
+		{ Name = "Flame", Size = Vector3.new(0.5, 0.7, 0.2), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(255, 90, 0), Material = Enum.Material.Neon },
+		{ Name = "EarL", Size = Vector3.new(0.3, 0.4, 0.15), Offset = Vector3.new(-0.4, 2.75, 0), Color = Color3.fromRGB(200, 60, 20) },
+		{ Name = "EarR", Size = Vector3.new(0.3, 0.4, 0.15), Offset = Vector3.new(0.4, 2.75, 0), Color = Color3.fromRGB(200, 60, 20) },
+	},
+	GajahGamelan = {
+		{ Name = "Trunk", Size = Vector3.new(0.35, 1.0, 0.35), Offset = Vector3.new(0, 1.4, 0.7), Color = Color3.fromRGB(150, 150, 150) },
+		{ Name = "TuskL", Size = Vector3.new(0.18, 0.18, 0.8), Offset = Vector3.new(-0.45, 1.7, 0.75), Color = Color3.fromRGB(245, 245, 240) },
+		{ Name = "TuskR", Size = Vector3.new(0.18, 0.18, 0.8), Offset = Vector3.new(0.45, 1.7, 0.75), Color = Color3.fromRGB(245, 245, 240) },
+	},
+}
+
+local function addBrainrotPart(model, name, size, offset, color, material)
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Size = size
+	part.CFrame = CFrame.new(offset)
+	part.Material = material or Enum.Material.SmoothPlastic
+	part.Color = color
+	part.Anchored = true
+	part.CanCollide = false
+	part.Parent = model
+	return part
+end
+
+-- Model Brainrot sederhana (badan + kepala + mata + ciri khas) dengan
+-- label nama + rarity + income. Origin model di kaki (y = 0) sehingga
+-- PivotTo(CFrame.new(posisi permukaan)) meletakkannya tepat di atas
+-- permukaan. Gajah Gamelan: tubuh EMAS (Metal), gading putih, mata hitam.
+local function createBrainrotModel(kind, scale)
+	local entry = Config.Roster[kind]
+	if entry == nil then
+		return nil
+	end
+	local s = scale or 1
+	local model = Instance.new("Model")
+	model.Name = "Brainrot_" .. kind
+	local bodyColor = entry.Color
+	local bodyMaterial = Enum.Material.SmoothPlastic
+	if kind == "GajahGamelan" then
+		bodyColor = Color3.fromRGB(255, 200, 60)
+		bodyMaterial = Enum.Material.Metal
+	end
+	local body = addBrainrotPart(model, "Body",
+		Vector3.new(1.6, 1.6, 1.6) * s, Vector3.new(0, 0.8 * s, 0),
+		bodyColor, bodyMaterial)
+	local head = addBrainrotPart(model, "Head",
+		Vector3.new(1.2, 1.2, 1.2) * s, Vector3.new(0, 2.05 * s, 0),
+		Color3.fromRGB(245, 240, 230), Enum.Material.SmoothPlastic)
+	addBrainrotPart(model, "EyeL",
+		Vector3.new(0.22, 0.28, 0.1) * s, Vector3.new(-0.3 * s, 2.1 * s, 0.62 * s),
+		Color3.fromRGB(20, 20, 20), Enum.Material.SmoothPlastic)
+	addBrainrotPart(model, "EyeR",
+		Vector3.new(0.22, 0.28, 0.1) * s, Vector3.new(0.3 * s, 2.1 * s, 0.62 * s),
+		Color3.fromRGB(20, 20, 20), Enum.Material.SmoothPlastic)
+	local features = BRAINROT_FEATURES[kind]
+	if features then
+		for _, spec in ipairs(features) do
+			addBrainrotPart(model, spec.Name, spec.Size * s, spec.Offset * s,
+				spec.Color, spec.Material)
+		end
+	end
+	-- Label nama + rarity + income di atas model.
+	local label = Instance.new("BillboardGui")
+	label.Name = "BrainrotLabel"
+	label.Size = UDim2.fromOffset(180, 64)
+	label.StudsOffsetWorldSpace = Vector3.new(0, 1.6 * s, 0)
+	label.AlwaysOnTop = false
+	label.LightInfluence = 0
+	label.Parent = head
+	local text = Instance.new("TextLabel")
+	text.Name = "Label"
+	text.Size = UDim2.new(1, 0, 1, 0)
+	text.BackgroundTransparency = 1
+	text.Text = entry.DisplayName .. "\n" .. entry.Rarity .. " - $" .. tostring(entry.Income) .. "/dtk"
+	text.TextColor3 = Color3.fromRGB(255, 255, 255)
+	text.TextScaled = true
+	text.Font = Enum.Font.GothamBold
+	text.Parent = label
+	model.PrimaryPart = body
+	return model
+end
+
+-- Perbarui visual pedestal: model Brainrot skala 2.0 + label kalau slot
+-- terisi, kosong kalau tidak.
+local function refreshSlotVisual(baseIdx, slotIdx)
+	local visuals = BaseVisuals[baseIdx]
+	if not visuals then
+		return
+	end
+	local old = visuals.SlotModels[slotIdx]
+	if old then
+		old:Destroy()
+		visuals.SlotModels[slotIdx] = nil
+	end
+	local owner = BaseOwner[baseIdx]
+	if not owner then
+		return
+	end
+	local state = Players[owner]
+	if not state then
+		return
+	end
+	local item = state.Slots[slotIdx]
+	if item == nil then
+		return
+	end
+	local pedestals = World.PedestalPos[baseIdx]
+	if not pedestals then
+		return
+	end
+	local pos = pedestals[slotIdx]
+	if not pos then
+		return
+	end
+	local model = createBrainrotModel(item.Kind, 2.0)
+	if not model then
+		return
+	end
+	model.Parent = Workspace
+	model:PivotTo(CFrame.new(pos))
+	visuals.SlotModels[slotIdx] = model
+end
+
+local function destroyCarriedModel(player)
+	local old = CarriedModels[player]
+	if old then
+		old:Destroy()
+		CarriedModels[player] = nil
+	end
+end
+
+-- Pasang/lepas model Brainrot yang dibawa pemain (skala 1.4, di atas
+-- kepala, mengikuti karakter lewat Weld). Dipanggil setelah place/
+-- sell/rebirth, setelah load memulihkan Carried, dan setiap kali
+-- karakter (re)spawn (CharacterAdded, DESIGN.md 8).
+local function refreshCarriedVisual(player)
+	local state = Players[player]
+	destroyCarriedModel(player)
+	if not state or state.Carried == nil then
+		return
+	end
+	local character = player.Character
+	if not character then
+		return
+	end
+	local hrp = character:FindFirstChild("HumanoidRootPart")
+	if not hrp then
+		return
+	end
+	local model = createBrainrotModel(state.Carried.Kind, 1.4)
+	if not model then
+		return
+	end
+	model.Parent = character
+	model:PivotTo(hrp.CFrame * CFrame.new(0, 2.2, 0))
+	local body = model.PrimaryPart
+	-- Las tiap part ke badan, lalu badan ke HumanoidRootPart.
+	for _, descendant in ipairs(model:GetDescendants()) do
+		if descendant:IsA("BasePart") and descendant ~= body then
+			local weld = Instance.new("Weld")
+			weld.Part0 = body
+			weld.Part1 = descendant
+			weld.C0 = body.CFrame:ToObjectSpace(descendant.CFrame)
+			weld.C1 = CFrame.new()
+			weld.Parent = body
+			descendant.Anchored = false
+			descendant.CanCollide = false
+			descendant.Massless = true
+		end
+	end
+	local rootWeld = Instance.new("Weld")
+	rootWeld.Part0 = hrp
+	rootWeld.Part1 = body
+	rootWeld.C0 = hrp.CFrame:ToObjectSpace(body.CFrame)
+	rootWeld.C1 = CFrame.new()
+	rootWeld.Parent = body
+	body.Anchored = false
+	body.CanCollide = false
+	body.Massless = true
+	CarriedModels[player] = model
+end
+
+-- Load gating (DESIGN.md 16.5, mulai Stage 2): true hanya bila state
+-- ada dan LoadStatus "ok" atau "new". Dipakai SEMUA handler gameplay.
+local function isLoadReady(player)
+	local state = Players[player]
+	return state ~= nil and (state.LoadStatus == "ok" or state.LoadStatus == "new")
+end
+
+local function notifyLoadNotReady(player)
+	local state = Players[player]
+	if state and (state.LoadStatus == "failed" or state.LoadStatus == "corrupt") then
+		Remotes.Notify:FireClient(player, "Data simpanan gagal dimuat — progres sesi ini tidak akan disimpan. Coba relog nanti.")
+	else
+		Remotes.Notify:FireClient(player, "Data sedang dimuat, tunggu sebentar.")
+	end
+end
+
+-- Handler RemoteEvent -> fungsi modul (Main hanya validasi load gating
+-- + meneruskan + menerapkan hasil ke visual; tanpa logika bisnis).
+local function onPlaceRequest(player, slotIdx)
+	if not isLoadReady(player) then
+		notifyLoadNotReady(player)
+		return
+	end
+	local state = Players[player]
+	if not state or state.Base == nil then
+		Remotes.Notify:FireClient(player, "Kamu belum punya base.")
+		return
+	end
+	local baseIdx = state.Base
+	local ok, msg = Economy.placeItem(Players, player, slotIdx, Remotes)
+	Remotes.Notify:FireClient(player, msg)
+	if ok then
+		refreshSlotVisual(baseIdx, slotIdx)
+		refreshCarriedVisual(player)
+	end
+end
+
+local function onSellRequest(player, slotIdx)
+	if not isLoadReady(player) then
+		notifyLoadNotReady(player)
+		return
+	end
+	local state = Players[player]
+	if not state or state.Base == nil then
+		Remotes.Notify:FireClient(player, "Kamu belum punya base.")
+		return
+	end
+	local baseIdx = state.Base
+	local ok, msg = Economy.sellSlot(Players, player, slotIdx, Remotes)
+	Remotes.Notify:FireClient(player, msg)
+	if ok then
+		refreshSlotVisual(baseIdx, slotIdx)
+	end
+end
+
+local function onRebirthRequest(player)
+	if not isLoadReady(player) then
+		notifyLoadNotReady(player)
+		return
+	end
+	local state = Players[player]
+	if not state then
+		return
+	end
+	local baseIdx = state.Base
+	local ok, msg = Economy.rebirth(Players, player, Remotes)
+	Remotes.Notify:FireClient(player, msg)
+	if ok then
+		if baseIdx then
+			for i = 1, Config.SLOT_COUNT do
+				refreshSlotVisual(baseIdx, i)
+			end
+		end
+		refreshCarriedVisual(player)
+	end
+end
+
+-- Tick income 1 detik (Stage 2): Economy.addIncome(Players, Remotes).
+local function incomeTick()
+	Economy.addIncome(Players, Remotes)
+end
+
+-- ---------------------------------------------------------------------------
+-- Lifecycle pemain — STAGE 2 (DataStore + load gating + LoadToken).
+-- (DESIGN.md 17.1, 17.2, 17.7 + MAIN-SERVER-PLAN langkah 4B.)
 -- ---------------------------------------------------------------------------
 
 local function onPlayerAdded(player)
@@ -528,21 +841,111 @@ local function onPlayerAdded(player)
 		LockExpiresAt = nil,
 		LastStealAt = 0,
 		LastStealAttemptAt = 0,
-		LoadStatus = "ok",
+		LoadStatus = "loading",
 		LoadedDataVersion = nil,
 		LoadedRevision = nil,
-		LoadToken = nil,
+		LoadToken = newUid(),
 	}
 	assignBase(player)
+	-- Re-attach visual carried setiap kali karakter (re)spawn (DESIGN.md 8).
+	player.CharacterAdded:Connect(function()
+		refreshCarriedVisual(player)
+	end)
+	local state = Players[player]
+	local token = state.LoadToken
+	-- Load dalam task.spawn terpisah: satu pemain yang load-nya lambat
+	-- tidak boleh memblokir pemain lain (DESIGN.md 17.1).
+	task.spawn(function()
+		local data, status = DataStore.loadData(player)
+		local current = Players[player]
+		-- Perlindungan load terlambat (17.7): terapkan hasil HANYA bila
+		-- ketiga syarat lolos; kalau tidak, buang hasil tanpa efek.
+		if current == nil then
+			print("[Main] load dibuang: " .. player.Name .. " sudah keluar.")
+			return
+		end
+		if current.LoadToken == nil then
+			print("[Main] load dibuang: LoadToken nil untuk " .. player.Name .. ".")
+			return
+		end
+		if current.LoadToken ~= token then
+			print("[Main] load dibuang: LoadToken tidak cocok untuk " .. player.Name .. ".")
+			return
+		end
+		if status == "ok" and data ~= nil then
+			current.Money = data.Money
+			current.Rebirths = data.Rebirths
+			current.IncomeMult = 1 + data.Rebirths * 0.5
+			current.LoadedRevision = data.Revision
+			current.LoadedDataVersion = data.Version
+			current.Slots = {}
+			for i = 1, Config.SLOT_COUNT do
+				local item = data.Slots[tostring(i)]
+				if item ~= nil then
+					current.Slots[i] = { Uid = item.Uid, Kind = item.Kind }
+				end
+			end
+			if data.Carried ~= nil then
+				current.Carried = { Uid = data.Carried.Uid, Kind = data.Carried.Kind }
+			end
+			current.LoadStatus = "ok"
+			if current.Base ~= nil then
+				for i = 1, Config.SLOT_COUNT do
+					refreshSlotVisual(current.Base, i)
+				end
+			end
+			refreshCarriedVisual(player)
+		elseif status == "new" then
+			current.LoadStatus = "new"
+		else
+			-- "failed" / "corrupt": state sesi tetap default (17.4);
+			-- save dilewati, aksi pengubah state ditolak.
+			current.LoadStatus = status
+			Remotes.Notify:FireClient(player, "Data simpanan gagal dimuat — progres sesi ini tidak akan disimpan. Coba relog nanti.")
+		end
+	end)
 end
 
+-- Urutan save-sebelum-cleanup (DESIGN.md 17.2): save DULU, catat hasil,
+-- perbarui LoadedRevision bila sukses, lalu LoadToken = nil, BARU
+-- bersihkan base + hapus entri Players. Urutan ini TIDAK BOLEH dibalik.
 local function onPlayerRemoving(player)
+	local state = Players[player]
+	if state then
+		local ok, msg, newRevision = DataStore.saveData(player, state, sessionId)
+		if ok then
+			state.LoadedRevision = newRevision
+			print("[Main] save sukses untuk " .. player.Name .. " (revision " .. tostring(newRevision) .. ").")
+		else
+			warn("[Main] save gagal untuk " .. player.Name .. ": " .. tostring(msg))
+			if string.sub(tostring(msg), 1, 8) == "conflict" then
+				pcall(function()
+					Remotes.Notify:FireClient(player, "Progres tidak tersimpan — data berubah di server lain. Relog untuk memuat data terbaru.")
+				end)
+			end
+		end
+		-- Batalkan load yang mungkin masih berjalan (DESIGN.md 17.7).
+		state.LoadToken = nil
+	end
+	destroyCarriedModel(player)
 	releaseBase(player)
 	Players[player] = nil
 end
 
 local function onBindToClose()
-	-- Stage 1: tidak melakukan apa pun (tidak ada DataStore untuk disimpan).
+	for player, state in pairs(Players) do
+		if state.LoadStatus == "ok" or state.LoadStatus == "new" then
+			local ok, msg, newRevision = DataStore.saveData(player, state, sessionId)
+			if ok then
+				state.LoadedRevision = newRevision
+				print("[Main] BindToClose save sukses untuk " .. player.Name .. ".")
+			else
+				warn("[Main] BindToClose save gagal untuk " .. player.Name .. ": " .. tostring(msg))
+			end
+		else
+			print("[Main] BindToClose lewati " .. player.Name .. " (LoadStatus = " .. tostring(state.LoadStatus) .. ").")
+		end
+	end
 end
 
 -- ---------------------------------------------------------------------------
@@ -556,16 +959,24 @@ PlayersService.PlayerAdded:Connect(onPlayerAdded)
 PlayersService.PlayerRemoving:Connect(onPlayerRemoving)
 game:BindToClose(onBindToClose)
 
+-- Handler gameplay Stage 2: Place/Sell/Rebirth -> Economy.
+-- StealRequest / ClaimRequest / DebugFlood BELUM di-wire (Stage 3/4);
+-- tidak ada handler yang memanggil modul yang belum ada.
+Remotes.PlaceRequest.OnServerEvent:Connect(onPlaceRequest)
+Remotes.SellRequest.OnServerEvent:Connect(onSellRequest)
+Remotes.RebirthRequest.OnServerEvent:Connect(onRebirthRequest)
+
 -- Pemain yang sudah ada sebelum script jalan (misal Play Solo di Studio).
 for _, player in ipairs(PlayersService:GetPlayers()) do
 	task.spawn(onPlayerAdded, player)
 end
 
 -- Loop utama 1 detik (SATU-SATUNYA loop; milik Main).
--- Stage 1: loop kosong — income (Stage 2), lock expiry (Stage 3),
--- flood + crate expiry (Stage 4) baru ditambahkan pada stage-nya.
+-- Stage 2: tambah incomeTick -> Economy.addIncome(Players, Remotes).
+-- Lock expiry (Stage 3), flood + crate expiry (Stage 4) menyusul.
 task.spawn(function()
 	while true do
 		task.wait(1)
+		incomeTick()
 	end
 end)
