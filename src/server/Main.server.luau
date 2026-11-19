@@ -13,6 +13,13 @@
 -- (refreshPedestalPrompt: OwnerUserId saat base di-assign/dilepas,
 -- SlotFilled saat slot terisi/dikosongkan, Enabled saat base ada
 -- pemilik) agar client bisa melabel Taruh/Jual/Curi dari atribut.
+-- Fix pasca-uji Studio bos (20 Nov): alur ambil Brainrot dari conveyor
+-- (ProximityPrompt "Ambil" + TakeRequest + onTakeRequest), rumah base
+-- di buildOneBase, fallback Studio di isLoadReady (DataStore:128 di
+-- file lokal belum publish), pohon di depan pintu base di-skip di
+-- buildTrees, plus polish visual map (jalur pejalan kaki, medali +
+-- pot plaza, spanduk gapura, variasi warna kota/pohon/lampu, tali
+-- lampion, kios pasar) — tanpa mengubah layout/konstanta gameplay.
 -- Flood di-require Stage 4: Main pemilik TUNGGAL loop flood —
 -- floodTick() memanggil Flood.tick SATU kali per detik dan hanya
 -- menerapkan actions yang dikembalikan (tidak menghitung ulang
@@ -28,6 +35,7 @@ local Flood = require(script.Parent.Flood)
 
 local PlayersService = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
@@ -98,6 +106,7 @@ local REMOTE_NAMES = {
 	"LockRequest",
 	"RebirthRequest",
 	"ClaimRequest",
+	"TakeRequest",
 	"DebugFlood",
 }
 
@@ -149,6 +158,18 @@ local function buildTerrain()
 		Enum.Material.Cobblestone,
 		Color3.fromRGB(112, 104, 96)
 	)
+	-- Jalur pejalan kaki di tepi conveyor (x = ±16.5): strip tipis
+	-- warna bata hangat di atas tanah, CanCollide false (murni dekor).
+	for _, sideSign in ipairs({ -1, 1 }) do
+		local strip = makePart(
+			"Walkway",
+			Vector3.new(2, 0.1, 320),
+			Vector3.new(sideSign * 16.5, 0.05, 0),
+			Enum.Material.Slate,
+			Color3.fromRGB(178, 128, 84)
+		)
+		strip.CanCollide = false
+	end
 end
 
 local function buildConveyor()
@@ -183,6 +204,43 @@ local function buildPlaza()
 	spawn.Duration = 0
 	spawn.Enabled = true
 	spawn.Parent = Workspace
+
+	-- Medali bundar emas di tengah plaza (disc tipis, CanCollide
+	-- false — hanya dekor lantai, tidak menghalangi jalan spawn).
+	local medallion = Instance.new("Part")
+	medallion.Name = "PlazaMedallion"
+	medallion.Shape = Enum.PartType.Cylinder
+	medallion.Size = Vector3.new(0.15, 12, 12)
+	medallion.CFrame = CFrame.new(0, 0.65, 150) * CFrame.Angles(0, 0, math.rad(90))
+	medallion.Material = Enum.Material.SmoothPlastic
+	medallion.Color = Color3.fromRGB(220, 180, 60)
+	medallion.Anchored = true
+	medallion.CanCollide = false
+	medallion.Parent = Workspace
+
+	-- 4 pot tanaman di sudut plaza (jauh dari titik spawn): kotak kayu
+	-- + semak hijau bulat di atasnya.
+	for _, cornerX in ipairs({ -50, 50 }) do
+		for _, cornerZ in ipairs({ 132, 178 }) do
+			local pot = makePart(
+				"PlazaPlanter",
+				Vector3.new(4, 1.5, 4),
+				Vector3.new(cornerX, 1.35, cornerZ),
+				Enum.Material.Wood,
+				Color3.fromRGB(120, 75, 45)
+			)
+			local bush = Instance.new("Part")
+			bush.Name = "PlazaBush"
+			bush.Shape = Enum.PartType.Ball
+			bush.Size = Vector3.new(4, 3.5, 4)
+			bush.Position = Vector3.new(cornerX, 3.5, cornerZ)
+			bush.Material = Enum.Material.SmoothPlastic
+			bush.Color = Color3.fromRGB(50, 140, 70)
+			bush.Anchored = true
+			bush.CanCollide = false
+			bush.Parent = Workspace
+		end
+	end
 end
 
 local BASE_FLOOR_COLORS = {
@@ -209,6 +267,46 @@ local function buildOneBase(baseIdx, xCenter, zCenter)
 	)
 	floor.Name = "BaseFloor" .. baseIdx
 	World.BaseCenter[baseIdx] = Vector3.new(xCenter, 0.8, zCenter)
+
+	-- Rumah base (gaya pasar malam, kayu/bata warna hangat): dinding
+	-- belakang + 2 dinding samping + atap; depan TERBUKA menghadap
+	-- pusat/conveyor. Dinding 1 stud ke dalam dari kaca lock (x ±28 /
+	-- z ±23) supaya tidak z-fighting dengan kaca. World.BaseCenter
+	-- dan World.PedestalPos TIDAK berubah; pedestal tetap di tempatnya
+	-- (dinding samping di z ±22 berjarak 13 stud dari pedestal z ±9,
+	-- jadi prompt pedestal jarak 12 tidak terhalang).
+	local inward = (xCenter < 0) and 1 or -1 -- arah dari base ke pusat (x=0)
+	local backX = xCenter - inward * 27 -- dinding belakang (sisi luar base)
+	local houseColor = Color3.fromRGB(165, 110, 70)
+	local roofColor = Color3.fromRGB(150, 60, 50)
+	-- Dinding belakang: sepanjang z (46), tinggi 8, dari lantai (y 0.8) ke y 8.8.
+	makePart(
+		"BaseHouseBack" .. baseIdx,
+		Vector3.new(1, 8, 46),
+		Vector3.new(backX, 4.8, zCenter),
+		Enum.Material.Brick,
+		houseColor
+	)
+	-- Dinding samping: sepanjang x (54, dari belakang sampai tepi depan
+	-- yang terbuka), di z ±22.
+	for _, sideSign in ipairs({ -1, 1 }) do
+		makePart(
+			"BaseHouseSide" .. baseIdx,
+			Vector3.new(54, 8, 1),
+			Vector3.new(xCenter, 4.8, zCenter + sideSign * 22),
+			Enum.Material.Wood,
+			houseColor
+		)
+	end
+	-- Atap: menutup seluruh lantai (sedikit overhang), y 8.3-8.9;
+	-- papan nama di y 20.5 tetap di atas atap.
+	makePart(
+		"BaseHouseRoof" .. baseIdx,
+		Vector3.new(58, 0.6, 48),
+		Vector3.new(xCenter, 8.6, zCenter),
+		Enum.Material.Brick,
+		roofColor
+	)
 
 	-- 6 pedestal silinder (2 baris x 3 kolom), permukaan atas y = 1.7.
 	World.PedestalPos[baseIdx] = {}
@@ -371,6 +469,20 @@ local function buildGates()
 			Enum.Material.Wood,
 			Color3.fromRGB(120, 70, 40)
 		)
+		-- Spanduk merah di bawah balok gapura + lampu hangatnya.
+		local banner = makePart(
+			"GateBanner",
+			Vector3.new(20, 2.5, 0.3),
+			Vector3.new(0, 11, gateZ),
+			Enum.Material.SmoothPlastic,
+			Color3.fromRGB(200, 60, 60)
+		)
+		banner.CanCollide = false
+		local gateLight = Instance.new("PointLight")
+		gateLight.Color = Color3.fromRGB(255, 190, 110)
+		gateLight.Range = 20
+		gateLight.Brightness = 1
+		gateLight.Parent = banner
 	end
 	-- Pagar sisi timur/barat dan ujung utara/selatan.
 	makePart("FenceW", Vector3.new(0.5, 3, 400), Vector3.new(-168, 1.5, 0), Enum.Material.Wood, Color3.fromRGB(110, 80, 50))
@@ -394,42 +506,82 @@ local function buildCity()
 	for i, spot in ipairs(spots) do
 		local height = 20 + ((i * 37) % 40)
 		local width = 14 + ((i * 13) % 10)
+		-- Variasi warna fasad malam (4 warna dusk, deterministik).
+		local cityColors = {
+			Color3.fromRGB(52, 52, 68),
+			Color3.fromRGB(68, 56, 72),
+			Color3.fromRGB(48, 62, 78),
+			Color3.fromRGB(70, 52, 52),
+		}
+		local facade = cityColors[((i - 1) % #cityColors) + 1]
 		makePart(
 			"CityBuilding",
 			Vector3.new(width, height, width),
 			Vector3.new(spot.x, height / 2, spot.z),
 			Enum.Material.Concrete,
-			Color3.fromRGB(52, 52, 68)
+			facade
 		)
+		-- Tepi atap menyala hangat (strip Neon di puncak gedung).
+		local roofTrim = makePart(
+			"CityRoofTrim",
+			Vector3.new(width + 0.4, 0.4, width + 0.4),
+			Vector3.new(spot.x, height + 0.2, spot.z),
+			Enum.Material.Neon,
+			Color3.fromRGB(255, 180, 90)
+		)
+		roofTrim.CanCollide = false
 	end
 end
 
 local function buildTrees()
-	-- 48 pohon di tepi conveyor (x = ±20, 24 per sisi).
+	-- Pohon di tepi conveyor (x = ±20, 24 posisi per sisi), TAPI pohon
+	-- yang z-nya masuk rentang lantai base mana pun TIDAK DIBUAT:
+	-- pohon itu berdiri tepat di depan pintu masuk base (sisi yang
+	-- menghadap conveyor/pusat) dan menghalangi pandangan. Rentang tiap
+	-- baris base = BASE_Z[row] ± 23 (setengah lebar lantai 46).
+	-- Dihapus 16 pohon per sisi; tersisa 8 per sisi (16 total).
+	-- Pohon dilewati di loop (bukan disembunyikan / dipindah).
 	local trunkColor = Color3.fromRGB(110, 70, 40)
-	local leafColor = Color3.fromRGB(40, 120, 60)
+	local leafColors = {
+		Color3.fromRGB(40, 120, 60),
+		Color3.fromRGB(55, 140, 65),
+		Color3.fromRGB(30, 100, 55),
+	}
 	for side = 1, 2 do
 		local treeX = (side == 1) and -20 or 20
 		for i = 1, 24 do
 			local treeZ = -150 + (i - 1) * 13
-			local trunk = makePart(
-				"TreeTrunk",
-				Vector3.new(1, 4, 1),
-				Vector3.new(treeX, 2, treeZ),
-				Enum.Material.Wood,
-				trunkColor
-			)
-			trunk.Name = "TreeTrunk"
-			local leaves = Instance.new("Part")
-			leaves.Name = "TreeLeaves"
-			leaves.Shape = Enum.PartType.Ball
-			leaves.Size = Vector3.new(5, 5, 5)
-			leaves.Position = Vector3.new(treeX, 6, treeZ)
-			leaves.Material = Enum.Material.SmoothPlastic
-			leaves.Color = leafColor
-			leaves.Anchored = true
-			leaves.CanCollide = false
+			local inFrontOfBase = false
+			for _, baseZ in ipairs(Config.BASE_Z) do
+				if treeZ >= baseZ - 23 and treeZ <= baseZ + 23 then
+					inFrontOfBase = true
+					break
+				end
+			end
+			-- (Tanpa `continue`: file ini harus lolos `luac -p` Lua 5.1,
+			-- jadi pembuatan pohon dibungkus `if not inFrontOfBase`.)
+			if not inFrontOfBase then
+				-- Variasi warna daun deterministik (3 hijau, by index).
+				local thisLeafColor = leafColors[((i + side) % #leafColors) + 1]
+				local trunk = makePart(
+					"TreeTrunk",
+					Vector3.new(1, 4, 1),
+					Vector3.new(treeX, 2, treeZ),
+					Enum.Material.Wood,
+					trunkColor
+				)
+				trunk.Name = "TreeTrunk"
+				local leaves = Instance.new("Part")
+				leaves.Name = "TreeLeaves"
+				leaves.Shape = Enum.PartType.Ball
+				leaves.Size = Vector3.new(5, 5, 5)
+				leaves.Position = Vector3.new(treeX, 6, treeZ)
+				leaves.Material = Enum.Material.SmoothPlastic
+				leaves.Color = thisLeafColor
+				leaves.Anchored = true
+				leaves.CanCollide = false
 			leaves.Parent = Workspace
+			end
 		end
 	end
 end
@@ -453,7 +605,12 @@ local function buildLamps()
 			bulb.Size = Vector3.new(1.6, 1.6, 1.6)
 			bulb.Position = Vector3.new(lampX, 7.4, lampZ)
 			bulb.Material = Enum.Material.Neon
-			bulb.Color = Color3.fromRGB(255, 200, 100)
+			-- Variasi bola lampu: kuning hangat / oranye hangat bergantian.
+			if i % 2 == 0 then
+				bulb.Color = Color3.fromRGB(255, 170, 70)
+			else
+				bulb.Color = Color3.fromRGB(255, 200, 100)
+			end
 			bulb.Anchored = true
 			bulb.CanCollide = false
 			bulb.Parent = Workspace
@@ -462,6 +619,92 @@ local function buildLamps()
 			light.Range = 22
 			light.Brightness = 1.5
 			light.Parent = bulb
+		end
+	end
+end
+
+local function buildLanterns()
+	-- Lampion pasar malam: tali lampion antar tiang lampu di kedua sisi
+	-- conveyor (tiang di z = -140 + (i-1)*46). 5 lampion per bentang,
+	-- sedikit melengkung ke bawah di tengah; warna merah/emas/hijau
+	-- bergantian (Neon, CanCollide false). PointLight hangat hanya di
+	-- lampion tengah tiap bentang ganjil (6 lampu) supaya map tetap
+	-- terang tanpa membanjiri renderer dengan cahaya.
+	local lanternColors = {
+		Color3.fromRGB(255, 70, 70),
+		Color3.fromRGB(255, 200, 60),
+		Color3.fromRGB(90, 220, 120),
+	}
+	for side = 1, 2 do
+		local lampX = (side == 1) and -18 or 18
+		for gap = 1, 6 do
+			local zA = -140 + (gap - 1) * 46
+			local zB = zA + 46
+			for k = 1, 5 do
+				local t = k / 6
+				local lanternZ = zA + (zB - zA) * t
+				local lanternY = 7.2 - 0.8 * math.sin(math.pi * t)
+				local lantern = Instance.new("Part")
+				lantern.Name = "Lantern"
+				lantern.Shape = Enum.PartType.Ball
+				lantern.Size = Vector3.new(0.9, 0.9, 0.9)
+				lantern.Position = Vector3.new(lampX, lanternY, lanternZ)
+				lantern.Material = Enum.Material.Neon
+				lantern.Color = lanternColors[((k + gap + side) % #lanternColors) + 1]
+				lantern.Anchored = true
+				lantern.CanCollide = false
+				lantern.Parent = Workspace
+				if k == 3 and gap % 2 == 1 then
+					local glow = Instance.new("PointLight")
+					glow.Color = Color3.fromRGB(255, 190, 110)
+					glow.Range = 12
+					glow.Brightness = 1
+					glow.Parent = lantern
+				end
+			end
+		end
+	end
+end
+
+-- Kios pasar di ujung utara/selatan map (x = ±35, z = ±188): jauh dari
+-- jalur spawn -> conveyor dan dari pintu base. Tiap kios: meja kayu,
+-- 4 tiang, atap garis merah/krem. Murni dekor (tidak menghalangi
+-- gameplay, tidak menyentuh base/conveyor/plaza).
+local function buildStalls()
+	local canopyColors = {
+		Color3.fromRGB(200, 60, 60),
+		Color3.fromRGB(240, 220, 180),
+	}
+	for _, stallX in ipairs({ -35, 35 }) do
+		for _, stallZ in ipairs({ -188, 188 }) do
+			makePart(
+				"StallCounter",
+				Vector3.new(6, 2, 3),
+				Vector3.new(stallX, 1, stallZ),
+				Enum.Material.Wood,
+				Color3.fromRGB(140, 95, 55)
+			)
+			for _, postX in ipairs({ -2.8, 2.8 }) do
+				for _, postZ in ipairs({ -1.3, 1.3 }) do
+					makePart(
+						"StallPost",
+						Vector3.new(0.4, 3, 0.4),
+						Vector3.new(stallX + postX, 3.5, stallZ + postZ),
+						Enum.Material.Wood,
+						Color3.fromRGB(110, 70, 40)
+					)
+				end
+			end
+			for stripe = 1, 3 do
+				local stripePart = makePart(
+					"StallCanopy",
+					Vector3.new(6.6, 0.3, 1.2),
+					Vector3.new(stallX, 5.2, stallZ - 1.2 + (stripe - 1) * 1.2),
+					Enum.Material.SmoothPlastic,
+					canopyColors[((stripe - 1) % #canopyColors) + 1]
+				)
+				stripePart.CanCollide = false
+			end
 		end
 	end
 end
@@ -476,6 +719,8 @@ local function buildWorld()
 	buildCity()
 	buildTrees()
 	buildLamps()
+	buildLanterns()
+	buildStalls()
 end
 
 -- ---------------------------------------------------------------------------
@@ -845,10 +1090,25 @@ local function refreshCarriedVisual(player)
 end
 
 -- Load gating (DESIGN.md 16.5, mulai Stage 2): true hanya bila state
--- ada dan LoadStatus "ok" atau "new". Dipakai SEMUA handler gameplay.
+-- ada dan LoadStatus "ok" atau "new" — DITAMBAH fallback KHUSUS Studio:
+-- file .rbxl lokal belum di-publish sehingga GetDataStore selalu gagal
+-- ("You must publish this place to the web to access DataStore",
+-- DataStore:128) dan LoadStatus jadi "failed". Di Studio, sesi tetap
+-- boleh bermain; di place yang sudah di-publish DataStore bekerja
+-- normal sehingga fallback ini tidak terpicu. Fallback ini TIDAK
+-- mengubah penjaga save: DataStore.saveData tetap menolak bila
+-- LoadStatus bukan "ok"/"new" dan BindToClose tetap melewati yang
+-- bukan "ok"/"new" (DESIGN.md 17.2/17.4 — jangan menimpa data
+-- tersimpan dengan default).
 local function isLoadReady(player)
 	local state = Players[player]
-	return state ~= nil and (state.LoadStatus == "ok" or state.LoadStatus == "new")
+	if state == nil then
+		return false
+	end
+	if state.LoadStatus == "ok" or state.LoadStatus == "new" then
+		return true
+	end
+	return RunService:IsStudio() and state.LoadStatus == "failed"
 end
 
 local function notifyLoadNotReady(player)
@@ -1083,6 +1343,19 @@ local function createConveyorModel(item)
 	if not model then
 		return nil
 	end
+	-- Prompt ambil: menempel pada PrimaryPart (Body) model sehingga
+	-- ikut bergeser saat moveConveyorItems memindahkan model dengan
+	-- PivotTo; ikut hancur bersama model saat tersapu flood atau
+	-- mencapai ujung conveyor (destroyConveyorModel).
+	local rosterEntry = Config.Roster[item.Kind]
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = "Ambil"
+	prompt.ObjectText = (rosterEntry and rosterEntry.DisplayName) or item.Kind
+	prompt.HoldDuration = 0
+	prompt.MaxActivationDistance = 12
+	prompt:SetAttribute("PromptKind", "Conveyor")
+	prompt:SetAttribute("Uid", item.Uid)
+	prompt.Parent = model.PrimaryPart
 	model.Parent = Workspace
 	model:PivotTo(CFrame.new(item.Position))
 	ConveyorModels[item.Uid] = model
@@ -1516,6 +1789,63 @@ local function onClaimRequest(player, crateId)
 	end
 end
 
+-- Handler TakeRequest (ambil Brainrot dari conveyor): validasi
+-- berurutan — (a) load siap (termasuk fallback Studio di isLoadReady),
+-- (b) tangan kosong, (c) UID cocok dengan entri di ConveyorItems,
+-- (d) jarak HumanoidRootPart ke posisi entri ConveyorItems saat itu
+-- <= 12 stud. Bila semua lolos, DALAM SATU LANGKAH tanpa yield:
+-- hapus entri dari ConveyorItems, hancurkan model conveyor, isi
+-- Carried, pasang visual carried, Notify sukses. Pesan sukses memakai
+-- format "Kamu mendapatkan <nama>!" yang sama dengan klaim peti,
+-- sehingga CarryPanel client ter-update lewat listener Notify yang
+-- sudah ada (tanpa event baru).
+local function onTakeRequest(player, uid)
+	if not isLoadReady(player) then
+		notifyLoadNotReady(player)
+		return
+	end
+	local state = Players[player]
+	if not state then
+		return
+	end
+	if state.Carried ~= nil then
+		Remotes.Notify:FireClient(player, "Tangan penuh — taruh atau jual dulu Brainrot yang kamu bawa.")
+		return
+	end
+	local foundIdx = nil
+	local item = nil
+	for i, entry in ipairs(ConveyorItems) do
+		if entry.Uid == uid then
+			foundIdx = i
+			item = entry
+			break
+		end
+	end
+	if item == nil then
+		Remotes.Notify:FireClient(player, "Brainrot itu sudah tidak ada di conveyor.")
+		return
+	end
+	local character = player.Character
+	local hrp = character and character:FindFirstChild("HumanoidRootPart")
+	if hrp == nil then
+		Remotes.Notify:FireClient(player, "Terlalu jauh dari conveyor.")
+		return
+	end
+	local distance = (hrp.Position - item.Position).Magnitude
+	if distance > Config.STEAL_RANGE then
+		Remotes.Notify:FireClient(player, "Terlalu jauh dari conveyor.")
+		return
+	end
+	-- Sukses: satu langkah sinkron, tanpa yield di tengah.
+	table.remove(ConveyorItems, foundIdx)
+	destroyConveyorModel(item.Uid)
+	state.Carried = { Uid = item.Uid, Kind = item.Kind }
+	refreshCarriedVisual(player)
+	local rosterEntry = Config.Roster[item.Kind]
+	local displayName = (rosterEntry and rosterEntry.DisplayName) or item.Kind
+	Remotes.Notify:FireClient(player, "Kamu mendapatkan " .. displayName .. "!")
+end
+
 -- ---------------------------------------------------------------------------
 -- Lifecycle pemain — STAGE 2 (DataStore + load gating + LoadToken).
 -- (DESIGN.md 17.1, 17.2, 17.7 + MAIN-SERVER-PLAN langkah 4B.)
@@ -1665,6 +1995,7 @@ Remotes.RebirthRequest.OnServerEvent:Connect(onRebirthRequest)
 Remotes.StealRequest.OnServerEvent:Connect(onStealRequest)
 Remotes.LockRequest.OnServerEvent:Connect(onLockRequest)
 Remotes.ClaimRequest.OnServerEvent:Connect(onClaimRequest)
+Remotes.TakeRequest.OnServerEvent:Connect(onTakeRequest)
 Remotes.DebugFlood.OnServerEvent:Connect(onDebugFlood)
 
 -- Pemain yang sudah ada sebelum script jalan (misal Play Solo di Studio).

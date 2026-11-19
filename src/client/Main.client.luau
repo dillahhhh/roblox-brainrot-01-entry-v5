@@ -127,6 +127,7 @@ local Remotes = {
 	LockRequest = waitRemote("LockRequest"),
 	RebirthRequest = waitRemote("RebirthRequest"),
 	ClaimRequest = waitRemote("ClaimRequest"),
+	TakeRequest = waitRemote("TakeRequest"),
 	DebugFlood = waitRemote("DebugFlood"),
 }
 
@@ -603,6 +604,14 @@ trackConnection(ProximityPromptService.PromptTriggered:Connect(function(prompt, 
 	local crateId = prompt:GetAttribute("CrateId")
 	if type(crateId) == "string" and crateId ~= "" then
 		Remotes.ClaimRequest:FireServer(crateId)
+		return
+	end
+	-- Conveyor: PromptKind "Conveyor" + atribut Uid -> TakeRequest(uid).
+	if prompt:GetAttribute("PromptKind") == "Conveyor" then
+		local uid = prompt:GetAttribute("Uid")
+		if type(uid) == "string" and uid ~= "" then
+			Remotes.TakeRequest:FireServer(uid)
+		end
 		return
 	end
 	if prompt:GetAttribute("PromptKind") ~= "Pedestal" then
