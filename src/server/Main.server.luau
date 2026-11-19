@@ -1532,6 +1532,57 @@ local function buildBoundaryWalls()
 	wall("BoundaryWallS", Vector3.new(2 * halfX + thick, height, thick), Vector3.new(0, centerY, halfZ))
 end
 
+-- Papan judul besar "PASAR BRAINROT" (FIX ROUND 15, foto referensi
+-- "BRAINROT BAY" dari bos — KOREKSI: tulisannya "PASAR BRAINROT",
+-- BUKAN "PASAR NUSANTARA"): di ujung utara conveyor (z = -175),
+-- menghadap spawn (selatan, +Z), huruf raksasa kuning di papan
+-- gelap — dua baris ("PASAR" / "BRAINROT") supaya huruf setinggi
+-- ~5 stud. DEKORASI SAJA: CanCollide false, 0 ProximityPrompt.
+-- Tidak menghalangi apa pun: conveyor berakhir z = -160 (15 stud
+-- di selatan papan), pohon buildTrees di x = ±20 (di luar lebar
+-- papan x -12..12), hutan di z = -196 (21 stud di utara papan).
+local function buildTitleBoard()
+	local boardColor = Color3.fromRGB(15, 25, 55)
+	local goldColor = Color3.fromRGB(220, 170, 40)
+	local function boardPart(name, size, position, color)
+		local part = Instance.new("Part")
+		part.Name = name
+		part.Size = size
+		part.Position = position
+		part.Material = Enum.Material.SmoothPlastic
+		part.Color = color
+		part.Anchored = true
+		part.CanCollide = false
+		part.Parent = Workspace
+		return part
+	end
+	-- Dua tiang penyangga (x = ±10, y 0-5).
+	boardPart("TitlePostL", Vector3.new(1, 5, 1), Vector3.new(-10, 2.5, -175), Color3.fromRGB(90, 60, 35))
+	boardPart("TitlePostR", Vector3.new(1, 5, 1), Vector3.new(10, 2.5, -175), Color3.fromRGB(90, 60, 35))
+	-- Papan 24 lebar x 12 tinggi, pusat y 11 (y 5-17).
+	local board = boardPart("TitleBoard", Vector3.new(24, 12, 1), Vector3.new(0, 11, -175), boardColor)
+	-- Bingkai emas tipis di tepi papan.
+	boardPart("TitleFrameTop", Vector3.new(24.6, 0.5, 1.2), Vector3.new(0, 17.1, -175), goldColor)
+	boardPart("TitleFrameBottom", Vector3.new(24.6, 0.5, 1.2), Vector3.new(0, 4.9, -175), goldColor)
+	boardPart("TitleFrameL", Vector3.new(0.5, 12.6, 1.2), Vector3.new(-12.1, 11, -175), goldColor)
+	boardPart("TitleFrameR", Vector3.new(0.5, 12.6, 1.2), Vector3.new(12.1, 11, -175), goldColor)
+	-- Tulisan: SurfaceGui di sisi Back (+Z, menghadap spawn).
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "TitleGui"
+	gui.Face = Enum.NormalId.Back
+	gui.LightInfluence = 0
+	gui.Parent = board
+	local text = Instance.new("TextLabel")
+	text.Name = "TitleText"
+	text.Size = UDim2.new(1, 0, 1, 0)
+	text.BackgroundTransparency = 1
+	text.Text = "PASAR\nBRAINROT"
+	text.TextColor3 = Color3.fromRGB(255, 220, 0)
+	text.TextScaled = true
+	text.Font = Enum.Font.GothamBlack
+	text.Parent = gui
+end
+
 local function buildWorld()
 	setupLighting()
 	buildTerrain()
@@ -1546,6 +1597,7 @@ local function buildWorld()
 	buildLanterns()
 	buildStalls()
 	buildVendorCarts()
+	buildTitleBoard()
 	buildExhibitionTable()
 end
 
@@ -2044,6 +2096,73 @@ local function addBrainrotPart(model, name, size, offset, color, material, shape
 	return part
 end
 
+-- FIX ROUND 15 (20 Nov, foto referensi "BRAINROT BAY" dari bos):
+-- "bentuknya bedain kaya orang lah jangan samaaa semua tiap brain".
+-- Bentuk badan + kepala beda per jenis (35 entri, satu per Roster
+-- kind): Ball (bola), Block (kotak), Cylinder (tabung) + proporsi
+-- lebar/ramping/dalam, supaya tiap jenis terbaca dari siluetnya
+-- saja. BATASAN (supaya fitur BRAINROT_FEATURES tetap menempel):
+-- posisi kepala TETAP y 2.05, tinggi badan 1.5-1.6 (puncak badan
+-- selalu menyentuh bawah kepala); lebar badan max 1.9 HANYA untuk
+-- kind TANPA fitur samping di |x| >= 0.82 (sayap, rusuk, belang)
+-- dan kedalaman max 1.9 HANYA untuk kind TANPA fitur depan/
+-- belakang yang tipis di |z| >= 0.85 — sisanya lebar/dalam 1.6.
+-- Lebar total max pada skala conveyor (2.6): 0.95 * 2.6 = 2.47
+-- stud < setengah jarak pedestal (3.5); piringan pameran
+-- (diameter 5, skala 2.0) muat: 0.95 * 2.0 = 1.9 < 2.5.
+local BRAINROT_SHAPES = {
+	__default = { BodyShape = Enum.PartType.Ball, BodySize = Vector3.new(1.6, 1.6, 1.6), HeadShape = Enum.PartType.Ball, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	-- Common: bebek tabung, ayam bulat, kambing kotak lebar,
+	-- kelinci tabung ramping, itik bulat.
+	BebekBayam = { BodyShape = Enum.PartType.Cylinder, BodySize = Vector3.new(1.6, 1.5, 1.6), HeadShape = Enum.PartType.Ball, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	AyamWortel = { BodyShape = Enum.PartType.Ball, BodySize = Vector3.new(1.6, 1.5, 1.6), HeadShape = Enum.PartType.Ball, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	KambingSawi = { BodyShape = Enum.PartType.Block, BodySize = Vector3.new(1.9, 1.5, 1.5), HeadShape = Enum.PartType.Block, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	KelinciSeledri = { BodyShape = Enum.PartType.Cylinder, BodySize = Vector3.new(1.3, 1.6, 1.3), HeadShape = Enum.PartType.Ball, HeadSize = Vector3.new(1.1, 1.1, 1.1) },
+	ItikJagung = { BodyShape = Enum.PartType.Ball, BodySize = Vector3.new(1.6, 1.6, 1.6), HeadShape = Enum.PartType.Ball, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	-- Uncommon: monyet kotak ramping, babi kotak, sapi bulat lebar,
+	-- kuda kotak dalam, domba bulat kepala besar.
+	MonyetPisang = { BodyShape = Enum.PartType.Block, BodySize = Vector3.new(1.4, 1.6, 1.4), HeadShape = Enum.PartType.Block, HeadSize = Vector3.new(1.1, 1.1, 1.1) },
+	BabiLabu = { BodyShape = Enum.PartType.Block, BodySize = Vector3.new(1.6, 1.5, 1.6), HeadShape = Enum.PartType.Block, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	SapiJagung = { BodyShape = Enum.PartType.Ball, BodySize = Vector3.new(1.9, 1.5, 1.9), HeadShape = Enum.PartType.Ball, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	KudaKentang = { BodyShape = Enum.PartType.Block, BodySize = Vector3.new(1.5, 1.6, 1.9), HeadShape = Enum.PartType.Block, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	DombaTimun = { BodyShape = Enum.PartType.Ball, BodySize = Vector3.new(1.6, 1.6, 1.6), HeadShape = Enum.PartType.Ball, HeadSize = Vector3.new(1.35, 1.35, 1.35) },
+	-- Rare: tupai tabung ramping, landak bulat, anjing kotak dalam,
+	-- rubah kotak dalam, musang tabung.
+	TupaiKacang = { BodyShape = Enum.PartType.Cylinder, BodySize = Vector3.new(1.4, 1.6, 1.4), HeadShape = Enum.PartType.Ball, HeadSize = Vector3.new(1.1, 1.1, 1.1) },
+	LandakPaprika = { BodyShape = Enum.PartType.Ball, BodySize = Vector3.new(1.6, 1.5, 1.6), HeadShape = Enum.PartType.Ball, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	AnjingBrokoli = { BodyShape = Enum.PartType.Block, BodySize = Vector3.new(1.5, 1.6, 1.9), HeadShape = Enum.PartType.Block, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	RubahUbi = { BodyShape = Enum.PartType.Block, BodySize = Vector3.new(1.5, 1.6, 1.8), HeadShape = Enum.PartType.Block, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	MusangSawi = { BodyShape = Enum.PartType.Cylinder, BodySize = Vector3.new(1.5, 1.6, 1.5), HeadShape = Enum.PartType.Ball, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	-- Epic: burung bulat, panda kotak, kucing tabung ramping,
+	-- elang tabung, koala bulat kepala besar.
+	BurungPaprika = { BodyShape = Enum.PartType.Ball, BodySize = Vector3.new(1.5, 1.6, 1.5), HeadShape = Enum.PartType.Ball, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	PandaUbi = { BodyShape = Enum.PartType.Block, BodySize = Vector3.new(1.6, 1.6, 1.6), HeadShape = Enum.PartType.Block, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	KucingCabai = { BodyShape = Enum.PartType.Cylinder, BodySize = Vector3.new(1.4, 1.6, 1.4), HeadShape = Enum.PartType.Ball, HeadSize = Vector3.new(1.1, 1.1, 1.1) },
+	ElangBawang = { BodyShape = Enum.PartType.Cylinder, BodySize = Vector3.new(1.6, 1.6, 1.6), HeadShape = Enum.PartType.Ball, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	KoalaSingkong = { BodyShape = Enum.PartType.Ball, BodySize = Vector3.new(1.6, 1.6, 1.6), HeadShape = Enum.PartType.Ball, HeadSize = Vector3.new(1.35, 1.35, 1.35) },
+	-- Legendary: singa bulat lebar kepala besar, badak kotak lebar,
+	-- beruang kotak kepala besar, macan tabung dalam, banteng bulat lebar.
+	SingaJahe = { BodyShape = Enum.PartType.Ball, BodySize = Vector3.new(1.9, 1.5, 1.9), HeadShape = Enum.PartType.Ball, HeadSize = Vector3.new(1.35, 1.35, 1.35) },
+	BadakKunyit = { BodyShape = Enum.PartType.Block, BodySize = Vector3.new(1.9, 1.6, 1.6), HeadShape = Enum.PartType.Block, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	BeruangTerong = { BodyShape = Enum.PartType.Block, BodySize = Vector3.new(1.6, 1.6, 1.6), HeadShape = Enum.PartType.Block, HeadSize = Vector3.new(1.35, 1.35, 1.35) },
+	MacanSelada = { BodyShape = Enum.PartType.Cylinder, BodySize = Vector3.new(1.6, 1.6, 1.9), HeadShape = Enum.PartType.Ball, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	BantengPare = { BodyShape = Enum.PartType.Ball, BodySize = Vector3.new(1.9, 1.6, 1.6), HeadShape = Enum.PartType.Ball, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	-- Mythic: naga kotak dalam, garuda bulat kepala kotak,
+	-- harimau bulat dalam, phoenix tabung, kirin kotak dalam.
+	NagaSelada = { BodyShape = Enum.PartType.Block, BodySize = Vector3.new(1.5, 1.6, 1.8), HeadShape = Enum.PartType.Block, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	GarudaBawang = { BodyShape = Enum.PartType.Ball, BodySize = Vector3.new(1.6, 1.6, 1.6), HeadShape = Enum.PartType.Block, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	HarimauTomat = { BodyShape = Enum.PartType.Ball, BodySize = Vector3.new(1.6, 1.6, 1.9), HeadShape = Enum.PartType.Ball, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	PhoenixKunyit = { BodyShape = Enum.PartType.Cylinder, BodySize = Vector3.new(1.6, 1.6, 1.6), HeadShape = Enum.PartType.Ball, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	KirinDurian = { BodyShape = Enum.PartType.Block, BodySize = Vector3.new(1.6, 1.6, 1.9), HeadShape = Enum.PartType.Block, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	-- Ultra Rare: komodo kotak panjang, paus bulat dalam,
+	-- gajah bulat kepala besar, orangutan kotak, cendrawasih tabung.
+	KomodoSingkong = { BodyShape = Enum.PartType.Block, BodySize = Vector3.new(1.5, 1.5, 2.0), HeadShape = Enum.PartType.Block, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	PausUbi = { BodyShape = Enum.PartType.Ball, BodySize = Vector3.new(1.6, 1.5, 1.9), HeadShape = Enum.PartType.Ball, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	GajahKol = { BodyShape = Enum.PartType.Ball, BodySize = Vector3.new(1.6, 1.6, 1.6), HeadShape = Enum.PartType.Ball, HeadSize = Vector3.new(1.35, 1.35, 1.35) },
+	OrangutanDurian = { BodyShape = Enum.PartType.Block, BodySize = Vector3.new(1.7, 1.6, 1.6), HeadShape = Enum.PartType.Block, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+	CendrawasihDurian = { BodyShape = Enum.PartType.Cylinder, BodySize = Vector3.new(1.5, 1.6, 1.5), HeadShape = Enum.PartType.Ball, HeadSize = Vector3.new(1.2, 1.2, 1.2) },
+}
+
 -- Model Brainrot sederhana (badan + kepala + mata + ciri khas) dengan
 -- label nama + rarity + income. Origin model di kaki (y = 0) sehingga
 -- PivotTo(CFrame.new(posisi permukaan)) meletakkannya tepat di atas
@@ -2066,27 +2185,42 @@ createBrainrotModel = function(kind, scale)
 	model.Name = "Brainrot_" .. kind
 	local bodyColor = entry.Color -- warna rarity (FITUR INDEX)
 	local bodyMaterial = Enum.Material.SmoothPlastic
+	-- FIX ROUND 15: bentuk badan beda per jenis (BRAINROT_SHAPES).
+	-- Badan TIDAK lagi satu cetakan bola 1.6: tiap jenis punya
+	-- Bentuk (Ball/Block/Cylinder) + ukuran sendiri; kepala ikut
+	-- bentuk badan. Posisi kepala tetap y 2.05 (semua fitur
+	-- BRAINROT_FEATURES ditulis terhadap posisi itu) dan tinggi
+	-- badan 1.5-1.6 (puncak badan selalu menyentuh bawah kepala).
+	local shape = BRAINROT_SHAPES[kind] or BRAINROT_SHAPES.__default
+	local bodySize = shape.BodySize
+	local headSize = shape.HeadSize
+	local bodyTop = bodySize.Y -- pusat badan di y = tinggi/2
+	local headCenterY = 2.05
 	local body = addBrainrotPart(model, "Body",
-		Vector3.new(1.6, 1.6, 1.6) * s, Vector3.new(0, 0.8 * s, 0),
-		bodyColor, bodyMaterial)
+		bodySize * s, Vector3.new(0, (bodySize.Y / 2) * s, 0),
+		bodyColor, bodyMaterial, shape.BodyShape)
 	local head = addBrainrotPart(model, "Head",
-		Vector3.new(1.2, 1.2, 1.2) * s, Vector3.new(0, 2.05 * s, 0),
-		entry.Color, Enum.Material.SmoothPlastic) -- kepala = warna rarity
-	-- Mata hitam + highlight putih (FIX ROUND 3): mata lebih hidup.
+		headSize * s, Vector3.new(0, headCenterY * s, 0),
+		entry.Color, Enum.Material.SmoothPlastic, shape.HeadShape) -- kepala = warna rarity
+	-- Mata hitam + highlight putih (FIX ROUND 3): posisi dihitung
+	-- dari ukuran kepala supaya selalu menempel di muka, bukan
+	-- koordinat tetap (kepala kini 1.1-1.35).
+	local eyeZ = headSize.Z / 2 + 0.02
+	local eyeY = headCenterY + 0.05
 	addBrainrotPart(model, "EyeL",
-		Vector3.new(0.22, 0.28, 0.1) * s, Vector3.new(-0.3 * s, 2.1 * s, 0.62 * s),
+		Vector3.new(0.22, 0.28, 0.1) * s, Vector3.new(-0.3 * s, eyeY * s, eyeZ * s),
 		Color3.fromRGB(20, 20, 20), Enum.Material.SmoothPlastic)
 	addBrainrotPart(model, "EyeR",
-		Vector3.new(0.22, 0.28, 0.1) * s, Vector3.new(0.3 * s, 2.1 * s, 0.62 * s),
+		Vector3.new(0.22, 0.28, 0.1) * s, Vector3.new(0.3 * s, eyeY * s, eyeZ * s),
 		Color3.fromRGB(20, 20, 20), Enum.Material.SmoothPlastic)
 	addBrainrotPart(model, "EyeHighlightL",
-		Vector3.new(0.08, 0.1, 0.05) * s, Vector3.new(-0.36 * s, 2.16 * s, 0.68 * s),
+		Vector3.new(0.08, 0.1, 0.05) * s, Vector3.new(-0.36 * s, (eyeY + 0.06) * s, (eyeZ + 0.06) * s),
 		Color3.fromRGB(255, 255, 255), Enum.Material.SmoothPlastic)
 	addBrainrotPart(model, "EyeHighlightR",
-		Vector3.new(0.08, 0.1, 0.05) * s, Vector3.new(0.24 * s, 2.16 * s, 0.68 * s),
+		Vector3.new(0.08, 0.1, 0.05) * s, Vector3.new(0.24 * s, (eyeY + 0.06) * s, (eyeZ + 0.06) * s),
 		Color3.fromRGB(255, 255, 255), Enum.Material.SmoothPlastic)
 	-- Kaki kecil di dasar badan + kalung aksen warna rarity (FIX ROUND 3):
-	-- proporsi lebih rapi, tingkat rarity langsung terbaca dari kalung.
+	-- kalung mengikuti lebar badan (badan + 0.1), y di puncak badan - 0.1.
 	addBrainrotPart(model, "FootL",
 		Vector3.new(0.45, 0.3, 0.6) * s, Vector3.new(-0.4 * s, 0.15 * s, 0.15 * s),
 		Color3.fromRGB(60, 55, 50), Enum.Material.SmoothPlastic)
@@ -2094,7 +2228,7 @@ createBrainrotModel = function(kind, scale)
 		Vector3.new(0.45, 0.3, 0.6) * s, Vector3.new(0.4 * s, 0.15 * s, 0.15 * s),
 		Color3.fromRGB(60, 55, 50), Enum.Material.SmoothPlastic)
 	addBrainrotPart(model, "RarityCollar",
-		Vector3.new(1.7, 0.22, 1.7) * s, Vector3.new(0, 1.5 * s, 0),
+		Vector3.new(bodySize.X + 0.1, 0.22, bodySize.Z + 0.1) * s, Vector3.new(0, (bodyTop - 0.1) * s, 0),
 		entry.Color, Enum.Material.SmoothPlastic)
 	local features = BRAINROT_FEATURES[kind]
 	if features then
@@ -2111,8 +2245,12 @@ createBrainrotModel = function(kind, scale)
 	-- keempat tempat tanpa 4 copy. Lembut (Transparency 0.88,
 	-- Brightness 1, Range 8): tidak menyilaukan, tidak menutupi
 	-- model/label (label di atas kepala, di luar bola aura).
+	-- FIX ROUND 15: aura mengikuti lebar badan (badan terlebar 1.9
+	-- butuh bola 2.6 supaya tetap membungkus model).
+	local auraX = math.max(2.4, bodySize.X + 0.7)
+	local auraZ = math.max(2.4, bodySize.Z + 0.7)
 	local auraShell = addBrainrotPart(model, "AuraShell",
-		Vector3.new(2.4, 2.8, 2.4) * s, Vector3.new(0, 1.4 * s, 0),
+		Vector3.new(auraX, 2.8, auraZ) * s, Vector3.new(0, 1.4 * s, 0),
 		entry.Color, Enum.Material.Neon, Enum.PartType.Ball)
 	auraShell.Transparency = Config.BRAINROT_AURA_TRANSPARENCY
 	-- FIX ROUND 10 (20 Nov): aura TIDAK BOLEH ikut raycast.

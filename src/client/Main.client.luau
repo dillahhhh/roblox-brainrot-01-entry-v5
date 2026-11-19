@@ -233,7 +233,7 @@ local moneyPanel = makeFrame(screenGui, "MoneyPanel",
 	Vector2.new(0.5, 1), Color3.fromRGB(25, 25, 35))
 local moneyLabel = makeLabel(moneyPanel, "MoneyLabel",
 	UDim2.new(1, -16, 0, 48), UDim2.new(0, 8, 0, 4),
-	formatMoney(money), 34, Color3.fromRGB(255, 225, 90))
+	formatMoney(money), 34, Color3.fromRGB(140, 230, 140))
 moneyLabel.TextXAlignment = Enum.TextXAlignment.Center
 local incomeLabel = makeLabel(moneyPanel, "IncomeLabel",
 	UDim2.new(1, -16, 0, 26), UDim2.new(0, 8, 0, 52),
@@ -413,17 +413,21 @@ local indexOpen = false
 local indexCells = {} -- kind -> {frame, nameLabel, priceLabel, entry}
 local indexCountLabel = nil
 
+-- FIX ROUND 15 (20 Nov, foto bos): tulisan Index digedein —
+-- panel 640x470 -> 920x680, sel 100x54 -> 150x80, nama 13 -> 18,
+-- harga 11 -> 15, label tier 13 -> 18 (tengah, bukan kiri — dulu
+-- kelihatan miring karena teks menempel kiri + hampir wrap).
 local indexPanel = makeFrame(screenGui, "IndexPanel",
-	UDim2.fromOffset(640, 470), UDim2.new(0.5, 0, 0.5, 0),
+	UDim2.fromOffset(920, 680), UDim2.new(0.5, 0, 0.5, 0),
 	Vector2.new(0.5, 0.5), Color3.fromRGB(20, 20, 28))
 indexPanel.Visible = false
 local indexTitle = makeLabel(indexPanel, "IndexTitle",
 	UDim2.new(1, -160, 0, 40), UDim2.new(0, 12, 0, 4),
-	"INDEKS BRAINROT", 24, Color3.fromRGB(255, 255, 255))
+	"INDEKS BRAINROT", 26, Color3.fromRGB(255, 255, 255))
 indexTitle.TextXAlignment = Enum.TextXAlignment.Left
 indexCountLabel = makeLabel(indexPanel, "IndexCount",
 	UDim2.fromOffset(96, 40), UDim2.new(1, -148, 0, 4),
-	"0/35", 22, Color3.fromRGB(255, 225, 90))
+	"0/35", 24, Color3.fromRGB(255, 225, 90))
 indexCountLabel.TextXAlignment = Enum.TextXAlignment.Right
 local indexClose = makeButton(indexPanel, "IndexClose",
 	UDim2.fromOffset(36, 36), UDim2.new(1, -8, 0, 6),
@@ -456,26 +460,26 @@ do
 			tierColor = Config.Roster[tierKinds[1]].Color
 		end
 		local tierLabel = makeLabel(indexPanel, "Tier_" .. tier,
-			UDim2.fromOffset(84, 54), UDim2.new(0, 12, 0, rowY),
-			tier, 13, tierColor)
-		tierLabel.TextXAlignment = Enum.TextXAlignment.Left
+			UDim2.fromOffset(110, 80), UDim2.new(0, 12, 0, rowY),
+			tier, 18, tierColor)
+		tierLabel.TextXAlignment = Enum.TextXAlignment.Center
 		for col, kind in ipairs(tierKinds) do
 			local entry = Config.Roster[kind]
-			local cellX = 12 + 84 + 6 + (col - 1) * (100 + 6)
+			local cellX = 12 + 110 + 6 + (col - 1) * (150 + 8)
 			local cell = makeFrame(indexPanel, "Cell_" .. kind,
-				UDim2.fromOffset(100, 54), UDim2.new(0, cellX, 0, rowY),
+				UDim2.fromOffset(150, 80), UDim2.new(0, cellX, 0, rowY),
 				Vector2.new(0, 0), Color3.fromRGB(35, 35, 45))
 			local nameLabel = makeLabel(cell, "CellName",
-				UDim2.new(1, -8, 0, 30), UDim2.new(0, 4, 0, 2),
-				"???", 13, Color3.fromRGB(130, 130, 140))
+				UDim2.new(1, -8, 0, 40), UDim2.new(0, 4, 0, 2),
+				"???", 18, Color3.fromRGB(130, 130, 140))
 			nameLabel.TextXAlignment = Enum.TextXAlignment.Center
 			local priceLabel = makeLabel(cell, "CellPrice",
-				UDim2.new(1, -8, 0, 18), UDim2.new(0, 4, 0, 32),
-				"", 11, Color3.fromRGB(200, 200, 200))
+				UDim2.new(1, -8, 0, 30), UDim2.new(0, 4, 0, 46),
+				"", 15, Color3.fromRGB(200, 200, 200))
 			priceLabel.TextXAlignment = Enum.TextXAlignment.Center
 			indexCells[kind] = { frame = cell, nameLabel = nameLabel, priceLabel = priceLabel, entry = entry }
 		end
-		rowY = rowY + 54 + 6
+		rowY = rowY + 80 + 8
 	end
 end
 
