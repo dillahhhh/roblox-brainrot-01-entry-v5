@@ -1752,8 +1752,10 @@ end
 
 -- Visual flood milik Main (DESIGN.md 7, 19.2): dinding air kaca
 -- biru, sirene banjir, dan 14 debris (baju/pintu/jendela).
--- Dibangun sekali saat server start; digerakkan/dibunyikan oleh
--- updateFloodVisuals tiap detik dari floodTick.
+-- Dibangun sekali saat server start; dinding air digerakkan
+-- per-frame oleh updateWaterWall dari RunService.Heartbeat
+-- (FIX ROUND 4), sirene + debris diperbarui tiap detik oleh
+-- updateFloodVisuals dari floodTick.
 local function buildFloodVisuals()
 	-- Dinding air: kaca biru, lebar map, tinggi 30. Parkir tak
 	-- terlihat (Transparency 1) sampai fase Flooding.
@@ -1803,32 +1805,47 @@ local function buildFloodVisuals()
 	end
 end
 
+-- Gerakkan dinding air per-frame (FIX ROUND 4 — dipanggil dari
+-- RunService.Heartbeat, ~60 fps): rumus yang SAMA dengan dulu
+-- (progres dari sisa waktu fase Flooding, -CONVEYOR_END_Z ->
+-- +CONVEYOR_END_Z dalam FLOODING_SECONDS), hanya frekuensi
+-- update-nya yang berubah dari 1x/detik menjadi tiap frame.
+-- Dulu dinding menempuh 320 stud dalam ~6 detik tapi posisinya
+-- di-update 1x/detik -> ~53 stud per langkah, terlihat patah /
+-- melompat. Kini 320 / 6 / 60 = ~0,89 stud/frame, mulus.
+-- Di luar Flooding — atau begitu 6 detik Flooding habis
+-- (now >= PhaseEndsAt, sebelum floodTick sempat memindah fase) —
+-- dinding disembunyikan (Transparency 1) supaya tidak tertinggal
+-- di tengah map. Fungsi ini HANYA menyentuh WaterWall: sirene
+-- dan debris tetap di updateFloodVisuals (1 detik), dan TIDAK
+-- ada logika transisi fase di sini (Flood.tick tetap pemiliknya).
+local function updateWaterWall(now)
+	if WaterWall == nil then
+		return
+	end
+	if FloodState.Phase == "Flooding" and FloodState.PhaseEndsAt ~= nil and now < FloodState.PhaseEndsAt then
+		local remaining = FloodState.PhaseEndsAt - now
+		if remaining > FLOODING_SECONDS then
+			remaining = FLOODING_SECONDS
+		end
+		local progress = 1 - (remaining / FLOODING_SECONDS)
+		local wallZ = -Config.CONVEYOR_END_Z + progress * (2 * Config.CONVEYOR_END_Z)
+		WaterWall.Transparency = 0.4
+		WaterWall.Position = Vector3.new(0, 15, wallZ)
+	else
+		WaterWall.Transparency = 1
+	end
+end
+
 -- Perbarui visual flood tiap detik (dipanggil floodTick):
--- - Dinding air: saat Flooding, bergerak utara -> selatan selama
---   fase (~6 detik, progres dari sisa waktu fase); di luar
---   Flooding, tak terlihat.
 -- - Sirene: berbunyi saat Warning, berhenti di fase lain.
 -- - Debris: beterbangan (posisi acak tiap detik) hanya saat
---   Flooding; di luar itu tak terlihat.
+--   Flooding; di luar itu tak terlihat. Kekacauan acak tiap
+--   detik ini disengaja — debris TIDAK ikut per-frame supaya
+--   tidak berkedip kacau.
+-- - Dinding air TIDAK di sini lagi (FIX ROUND 4): digerakkan
+--   per-frame oleh updateWaterWall dari Heartbeat.
 local function updateFloodVisuals(now)
-	if WaterWall ~= nil then
-		if FloodState.Phase == "Flooding" and FloodState.PhaseEndsAt ~= nil then
-			local remaining = FloodState.PhaseEndsAt - now
-			if remaining < 0 then
-				remaining = 0
-			end
-			if remaining > FLOODING_SECONDS then
-				remaining = FLOODING_SECONDS
-			end
-			local progress = 1 - (remaining / FLOODING_SECONDS)
-			local wallZ = -Config.CONVEYOR_END_Z + progress * (2 * Config.CONVEYOR_END_Z)
-			WaterWall.Transparency = 0.4
-			WaterWall.Position = Vector3.new(0, 15, wallZ)
-		else
-			WaterWall.Transparency = 1
-		end
-	end
-
 	if FloodSiren ~= nil then
 		if FloodState.Phase == "Warning" then
 			if not FloodSiren.IsPlaying then
@@ -2266,4 +2283,9 @@ RunService.Heartbeat:Connect(function(dt)
 		spawnConveyorItem()
 	end
 	moveConveyorItems(dt)
+	-- FIX ROUND 4: dinding air banjir juga digerakkan di sini,
+	-- per-frame (~60 fps, ~0,89 stud/frame) — dulu di
+	-- updateFloodVisuals 1x/detik (~53 stud/langkah, patah).
+	-- Sirene + debris tetap di tick 1 detik (updateFloodVisuals).
+	updateWaterWall(os.clock())
 end)
