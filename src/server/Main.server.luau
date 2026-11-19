@@ -1,18 +1,26 @@
--- Main.server.luau — Pasar Brainrot (roblox-brainrot-01, Stage 3)
+-- Main.server.luau — Pasar Brainrot (roblox-brainrot-01, Stage 4)
 -- SATU-SATUNYA Script server dan SATU-SATUNYA composition root.
--- Stage 3: require Config + Economy + DataStore + Steal, bangun dunia 3D
--- saat runtime, buat semua RemoteEvent, kelola lifecycle pemain dengan
--- load gating + LoadToken + save-sebelum-cleanup, wire Place/Sell/
--- Rebirth ke Economy, StealRequest ke Steal, LockRequest + barrier +
--- auto-unlock ditangani Main sendiri, dan jalankan loop utama 1 detik
--- (income tick + lock expiry tick).
--- Flood baru di-require Stage 4.
--- Spesifikasi: DESIGN.md bagian 16, 17, 20.3 + MAIN-SERVER-PLAN.md.
+-- Stage 4: require Config + Economy + DataStore + Steal + Flood,
+-- bangun dunia 3D saat runtime, buat semua RemoteEvent, kelola
+-- lifecycle pemain dengan load gating + LoadToken +
+-- save-sebelum-cleanup, wire Place/Sell/Rebirth ke Economy,
+-- StealRequest ke Steal, LockRequest + barrier + auto-unlock
+-- ditangani Main sendiri, dan jalankan loop utama 1 detik
+-- (income tick + lock expiry tick + flood tick + crate expiry
+-- tick) plus loop conveyor 0,1 detik (spawn tiap SPAWN_INTERVAL
+-- + gerak Brainrot sepanjang conveyor).
+-- Flood di-require Stage 4: Main pemilik TUNGGAL loop flood —
+-- floodTick() memanggil Flood.tick SATU kali per detik dan hanya
+-- menerapkan actions yang dikembalikan (tidak menghitung ulang
+-- transisi); Main pemilik visual peti + dinding air + sirene.
+-- Spesifikasi: DESIGN.md bagian 16, 17, 19, 20.3 +
+-- MAIN-SERVER-PLAN.md.
 
 local Config = require(game:GetService("ReplicatedStorage").Shared.Config)
 local Economy = require(script.Parent.Economy)
 local DataStore = require(script.Parent.DataStore)
 local Steal = require(script.Parent.Steal)
+local Flood = require(script.Parent.Flood)
 
 local PlayersService = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -46,6 +54,18 @@ local FloodState = {
 
 local conveyorDirection = 1 -- 1 = bergerak ke +Z; dibalik tiap flood (Stage 4)
 local sessionId = HttpService:GenerateGUID(false) -- satu sesi server (dipakai saveData Stage 2)
+
+-- Visual flood + peti milik Main (Stage 4, DESIGN.md 19.2/19.3):
+-- Flood tidak pernah membuat/menghancurkan Instance; Main yang
+-- membuat model conveyor + peti dan menggerakkan dinding air.
+local ConveyorModels = {} -- [Uid] -> Model Brainrot di conveyor | nil
+local CrateModels = {} -- [crateId] -> Model peti | nil
+local WaterWall = nil -- Part dinding air kaca biru (bergerak utara -> selatan saat Flooding)
+local FloodSiren = nil -- Sound sirene banjir (berbunyi saat Warning)
+local DebrisParts = {} -- 14 part debris (baju/pintu/jendela) yang beterbangan saat flood
+-- Durasi fase Flooding (DESIGN.md 7/19.2: ~6 detik); dipakai
+-- hitung progres dinding air. Tidak ada konstanta Config untuk ini.
+local FLOODING_SECONDS = 6
 
 -- SATU-SATUNYA generator UID di server (DESIGN.md 16.1). Disuntikkan ke
 -- modul yang butuh UID baru; modul tidak boleh membuat UID sendiri.
@@ -986,6 +1006,466 @@ local function incomeTick()
 end
 
 -- ---------------------------------------------------------------------------
+-- Flood + peti + conveyor (STAGE 4, DESIGN.md 7, 16.3, 19.2, 19.3).
+-- Main pemilik TUNGGAL loop flood dan pemilik visual peti/conveyor/
+-- dinding air. Flood hanya menyediakan transisi/sweep/data peti.
+-- ---------------------------------------------------------------------------
+
+-- Roll rarity spawn conveyor (DESIGN.md 3): roll 1-1000, entri
+-- pertama yang RollMax-nya >= roll menang (Config.RosterOrder).
+local function rollBrainrotKind()
+	local roll = math.random(1, 1000)
+	for _, kind in ipairs(Config.RosterOrder) do
+		local entry = Config.Roster[kind]
+		if entry ~= nil and roll <= entry.RollMax then
+			return kind
+		end
+	end
+	return "GajahGamelan"
+end
+
+-- Model Brainrot conveyor (skala 2.0 + label) dari entri
+-- ConveyorItems; dihancurkan saat item tersapu flood (dari daftar
+-- swept hasil Flood.tick) atau mencapai ujung conveyor.
+local function createConveyorModel(item)
+	local model = createBrainrotModel(item.Kind, 2.0)
+	if not model then
+		return nil
+	end
+	model.Parent = Workspace
+	model:PivotTo(CFrame.new(item.Position))
+	ConveyorModels[item.Uid] = model
+	return model
+end
+
+local function destroyConveyorModel(uid)
+	local model = ConveyorModels[uid]
+	if model then
+		model:Destroy()
+		ConveyorModels[uid] = nil
+	end
+end
+
+-- Spawn satu Brainrot baru di conveyor (MAIN-SERVER-PLAN Langkah 6):
+-- roll rarity, jalur 1/2 (x = -7.5 / +7.5), UID dari newUid(),
+-- entri {Uid, Kind, Lane, Position, SpawnedAt} ditambah ke
+-- ConveyorItems + model visualnya dibuat. Posisi spawn mengikuti
+-- arah gerak: z = -conveyorDirection * CONVEYOR_END_Z (ujung awal).
+-- DIJEDA selama fase Warning (DESIGN.md 7, 19.2).
+local function spawnConveyorItem()
+	if FloodState.Phase == "Warning" then
+		return nil
+	end
+	local kind = rollBrainrotKind()
+	local lane = math.random(1, 2)
+	local laneX = Config.CONVEYOR_LANES_X[lane]
+	local spawnZ = -conveyorDirection * Config.CONVEYOR_END_Z
+	local item = {
+		Uid = newUid(),
+		Kind = kind,
+		Lane = lane,
+		Position = Vector3.new(laneX, 0.55, spawnZ),
+		SpawnedAt = os.clock(),
+	}
+	table.insert(ConveyorItems, item)
+	createConveyorModel(item)
+	return item
+end
+
+-- Geser tiap entri ConveyorItems sepanjang sumbu Z searah
+-- conveyorDirection * CONVEYOR_SPEED (dt detik sejak tick lalu)
+-- dan pindahkan model visualnya mengikuti Position. Entri yang
+-- melewati ujung akhir DIHAPUS + modelnya dihancurkan — TANPA
+-- peti (peti hanya berasal dari sweep saat flood, DESIGN.md 19.2):
+-- hapus bila conveyorDirection == 1 dan Position.Z >=
+-- CONVEYOR_END_Z, atau conveyorDirection == -1 dan Position.Z <=
+-- -CONVEYOR_END_Z. TIDAK ADA angka batas hardcode — selalu
+-- Config.CONVEYOR_END_Z. Iterasi mundur agar penghapusan aman.
+local function moveConveyorItems(dt)
+	local step = conveyorDirection * Config.CONVEYOR_SPEED * dt
+	for i = #ConveyorItems, 1, -1 do
+		local item = ConveyorItems[i]
+		item.Position = item.Position + Vector3.new(0, 0, step)
+		local model = ConveyorModels[item.Uid]
+		if model ~= nil then
+			model:PivotTo(CFrame.new(item.Position))
+		end
+		local pastEnd = false
+		if conveyorDirection == 1 and item.Position.Z >= Config.CONVEYOR_END_Z then
+			pastEnd = true
+		elseif conveyorDirection == -1 and item.Position.Z <= -Config.CONVEYOR_END_Z then
+			pastEnd = true
+		end
+		if pastEnd then
+			destroyConveyorModel(item.Uid)
+			table.remove(ConveyorItems, i)
+		end
+	end
+end
+
+-- Warna kotak peti per kelas (DESIGN.md 7): Pasar hijau, Pedagang
+-- kuning, Tumpah ungu (+ cahaya emas).
+local CRATE_BOX_COLORS = {
+	Pasar = Color3.fromRGB(60, 200, 90),
+	Pedagang = Color3.fromRGB(240, 200, 40),
+	Tumpah = Color3.fromRGB(170, 80, 240),
+}
+
+-- Model peti (MAIN-SERVER-PLAN §3): kotak + model Brainrot di
+-- atasnya (skala 1.6) + label + ProximityPrompt "Buka Peti"
+-- (tahan 0.5 detik) dengan atribut CrateId. Peti Tumpah mendapat
+-- cahaya emas (PointLight). Flood tidak pernah membuat Instance
+-- peti — Main yang membuatnya dari entri CrateState.
+local function createCrateModel(crate)
+	local boxColor = CRATE_BOX_COLORS[crate.Kind] or Color3.fromRGB(150, 150, 150)
+	local model = Instance.new("Model")
+	model.Name = "Crate_" .. crate.Id
+
+	local box = Instance.new("Part")
+	box.Name = "CrateBox"
+	box.Size = Vector3.new(3, 2, 3)
+	box.Position = crate.Position
+	box.Material = Enum.Material.Wood
+	box.Color = boxColor
+	box.Anchored = true
+	box.CanCollide = true
+	box.Parent = model
+
+	-- Brainrot di dalam peti, di atas kotak (skala 1.6).
+	local brainrotKind = crate.BrainrotKind or crate.Kind
+	local top = createBrainrotModel(brainrotKind, 1.6)
+	if top then
+		top.Parent = model
+		top:PivotTo(CFrame.new(crate.Position + Vector3.new(0, 2, 0)))
+	end
+
+	-- Label: kelas peti + nama + rarity Brainrot di dalamnya.
+	local entry = Config.Roster[brainrotKind]
+	local labelText = "Peti " .. crate.Kind
+	if entry ~= nil then
+		labelText = labelText .. "\n" .. entry.DisplayName .. " (" .. entry.Rarity .. ")"
+	end
+	local label = Instance.new("BillboardGui")
+	label.Name = "CrateLabel"
+	label.Size = UDim2.fromOffset(200, 64)
+	label.StudsOffsetWorldSpace = Vector3.new(0, 3.5, 0)
+	label.AlwaysOnTop = false
+	label.LightInfluence = 0
+	label.Parent = box
+	local text = Instance.new("TextLabel")
+	text.Name = "Label"
+	text.Size = UDim2.new(1, 0, 1, 0)
+	text.BackgroundTransparency = 1
+	text.Text = labelText
+	text.TextColor3 = Color3.fromRGB(255, 255, 255)
+	text.TextScaled = true
+	text.Font = Enum.Font.GothamBold
+	text.Parent = label
+
+	-- Peti Tumpah: cahaya emas (DESIGN.md 7).
+	if crate.Kind == "Tumpah" then
+		local goldLight = Instance.new("PointLight")
+		goldLight.Color = Color3.fromRGB(255, 200, 60)
+		goldLight.Range = 12
+		goldLight.Brightness = 2
+		goldLight.Parent = box
+	end
+
+	-- Prompt klaim: client (Stage 5) mendengarkan Triggered lalu
+	-- mengirim ClaimRequest (crateId) ke server.
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = "Buka Peti"
+	prompt.ObjectText = "Peti " .. crate.Kind
+	prompt.HoldDuration = 0.5
+	prompt.MaxActivationDistance = Config.CLAIM_RANGE
+	prompt:SetAttribute("CrateId", crate.Id)
+	prompt.Parent = box
+
+	model.Parent = Workspace
+	CrateModels[crate.Id] = model
+	return model
+end
+
+local function destroyCrateModel(crateId)
+	local model = CrateModels[crateId]
+	if model then
+		model:Destroy()
+		CrateModels[crateId] = nil
+	end
+end
+
+-- Visual flood milik Main (DESIGN.md 7, 19.2): dinding air kaca
+-- biru, sirene banjir, dan 14 debris (baju/pintu/jendela).
+-- Dibangun sekali saat server start; digerakkan/dibunyikan oleh
+-- updateFloodVisuals tiap detik dari floodTick.
+local function buildFloodVisuals()
+	-- Dinding air: kaca biru, lebar map, tinggi 30. Parkir tak
+	-- terlihat (Transparency 1) sampai fase Flooding.
+	WaterWall = Instance.new("Part")
+	WaterWall.Name = "WaterWall"
+	WaterWall.Size = Vector3.new(340, 30, 2)
+	WaterWall.Position = Vector3.new(0, 15, -200)
+	WaterWall.Material = Enum.Material.Glass
+	WaterWall.Color = Color3.fromRGB(60, 140, 255)
+	WaterWall.Transparency = 1
+	WaterWall.Anchored = true
+	WaterWall.CanCollide = false
+	WaterWall.Parent = Workspace
+
+	-- Sirene banjir: "Tornado Siren", Volume 0.6, loop (saat Warning).
+	FloodSiren = Instance.new("Sound")
+	FloodSiren.Name = "FloodSiren"
+	FloodSiren.SoundId = "rbxassetid://792323017"
+	FloodSiren.Volume = 0.6
+	FloodSiren.Looped = true
+	FloodSiren.Parent = Workspace
+
+	-- 14 debris: 5 baju, 5 pintu, 4 jendela (part tipis warna
+	-- berbeda, posisi awal acak deterministik, tak terlihat).
+	local debrisSpecs = {}
+	for i = 1, 5 do
+		table.insert(debrisSpecs, { Name = "DebrisClothes", Size = Vector3.new(2, 0.3, 1.5), Color = Color3.fromRGB(220, 90, 90) })
+	end
+	for i = 1, 5 do
+		table.insert(debrisSpecs, { Name = "DebrisDoor", Size = Vector3.new(2.5, 0.3, 4), Color = Color3.fromRGB(150, 100, 50) })
+	end
+	for i = 1, 4 do
+		table.insert(debrisSpecs, { Name = "DebrisWindow", Size = Vector3.new(2, 0.3, 2), Color = Color3.fromRGB(140, 200, 240) })
+	end
+	for i, spec in ipairs(debrisSpecs) do
+		local part = Instance.new("Part")
+		part.Name = spec.Name
+		part.Size = spec.Size
+		part.Position = Vector3.new(-60 + ((i * 53) % 120), 2 + ((i * 7) % 10), -150 + ((i * 41) % 300))
+		part.Material = Enum.Material.SmoothPlastic
+		part.Color = spec.Color
+		part.Transparency = 1
+		part.Anchored = true
+		part.CanCollide = false
+		part.Parent = Workspace
+		table.insert(DebrisParts, part)
+	end
+end
+
+-- Perbarui visual flood tiap detik (dipanggil floodTick):
+-- - Dinding air: saat Flooding, bergerak utara -> selatan selama
+--   fase (~6 detik, progres dari sisa waktu fase); di luar
+--   Flooding, tak terlihat.
+-- - Sirene: berbunyi saat Warning, berhenti di fase lain.
+-- - Debris: beterbangan (posisi acak tiap detik) hanya saat
+--   Flooding; di luar itu tak terlihat.
+local function updateFloodVisuals(now)
+	if WaterWall ~= nil then
+		if FloodState.Phase == "Flooding" and FloodState.PhaseEndsAt ~= nil then
+			local remaining = FloodState.PhaseEndsAt - now
+			if remaining < 0 then
+				remaining = 0
+			end
+			if remaining > FLOODING_SECONDS then
+				remaining = FLOODING_SECONDS
+			end
+			local progress = 1 - (remaining / FLOODING_SECONDS)
+			local wallZ = -Config.CONVEYOR_END_Z + progress * (2 * Config.CONVEYOR_END_Z)
+			WaterWall.Transparency = 0.4
+			WaterWall.Position = Vector3.new(0, 15, wallZ)
+		else
+			WaterWall.Transparency = 1
+		end
+	end
+
+	if FloodSiren ~= nil then
+		if FloodState.Phase == "Warning" then
+			if not FloodSiren.IsPlaying then
+				FloodSiren:Play()
+			end
+		else
+			if FloodSiren.IsPlaying then
+				FloodSiren:Stop()
+			end
+		end
+	end
+
+	local flying = FloodState.Phase == "Flooding"
+	for _, part in ipairs(DebrisParts) do
+		if flying then
+			part.Transparency = 0
+			part.Position = Vector3.new(math.random(-60, 60), math.random(2, 12), math.random(-150, 150))
+			part.CFrame = part.CFrame * CFrame.Angles(0, math.rad(math.random(0, 359)), 0)
+		else
+			part.Transparency = 1
+		end
+	end
+end
+
+-- Knockback ringan sekali saat flood masuk fase Flooding
+-- (DESIGN.md 7): pemain di luar base sendiri terdorong ke selatan
+-- (arah gerak banjir) + sedikit ke atas. Pemain di dalam base
+-- sendiri aman (tidak didorong). Dibungkus pcall agar kegagalan
+-- dorong satu pemain tidak merusak floodTick.
+local function applyFloodKnockback()
+	for player, state in pairs(Players) do
+		if state ~= nil then
+			local character = player.Character
+			local hrp = nil
+			if character ~= nil then
+				hrp = character:FindFirstChild("HumanoidRootPart")
+			end
+			if hrp ~= nil and not Flood.isInsideOwnBase(Players, player, hrp.Position) then
+				pcall(function()
+					hrp.AssemblyLinearVelocity = hrp.AssemblyLinearVelocity + Vector3.new(0, 3, 10)
+				end)
+			end
+		end
+	end
+end
+
+-- Tick flood 1 detik (Stage 4, MAIN-SERVER-PLAN Langkah 6 —
+-- REVISI KE-3, MENGIKAT): panggil Flood.tick SATU kali; terapkan
+-- SELURUH actions yang dikembalikan — Main TIDAK menghitung ulang
+-- transisi apa pun. Bila actions.phase ~= nil, terapkan phase DAN
+-- phaseEndsAt (termasuk nil — nil berarti tidak ada fase berjalan,
+-- saat transisi ke Idle); nextFloodAt dan cycleActive diterapkan
+-- bila tidak nil; debugConsumed == true mematikan DebugPending.
+-- Setelah menerapkan FloodState: bila fase berubah, fire FloodEvent
+-- (fase baru + sisa detik); bila ada cratesCreated, buat model peti
+-- tiap entri; bila ada swept, hancurkan model visual conveyor tiap
+-- item tersapu (cocokkan Uid) + lepas visual carried pemain yang
+-- tersapu; bila conveyorFlip, balik arah conveyor. Kirim countdown
+-- FloodEvent tiap detik selama fase Warning/Scramble. TIDAK ADA
+-- pemanggilan fungsi Flood lain di sini dan TIDAK ADA penghitung
+-- transisi di Main.
+local function floodTick()
+	local now = os.clock()
+	-- Jepret pemain yang sedang membawa Brainrot SEBELUM tick,
+	-- supaya visual carried yang tersapu bisa dilepas sesudahnya.
+	local hadCarried = {}
+	for player, state in pairs(Players) do
+		if state.Carried ~= nil then
+			hadCarried[player] = true
+		end
+	end
+
+	local actions = Flood.tick(Players, ConveyorItems, Crates, FloodState, World, now, newUid)
+
+	local phaseChanged = false
+	if actions.phase ~= nil then
+		phaseChanged = (actions.phase ~= FloodState.Phase)
+		FloodState.Phase = actions.phase
+		-- Termasuk nil: transisi ke Idle membuat PhaseEndsAt = nil
+		-- (KOREKSI LANJUT — butir verifikasi eksplisit Stage 4).
+		FloodState.PhaseEndsAt = actions.phaseEndsAt
+	end
+	if actions.nextFloodAt ~= nil then
+		FloodState.NextFloodAt = actions.nextFloodAt
+	end
+	if actions.cycleActive ~= nil then
+		FloodState.CycleActive = actions.cycleActive
+	end
+	if actions.debugConsumed == true then
+		FloodState.DebugPending = false
+	end
+
+	-- Item tersapu: hancurkan model conveyor (cocokkan Uid; untuk
+	-- item carried tidak ada model conveyor -> no-op) + lepas
+	-- visual carried pemain yang kehilangan Brainrot-nya.
+	if actions.swept ~= nil then
+		for _, item in ipairs(actions.swept) do
+			destroyConveyorModel(item.Uid)
+		end
+		for player, _ in pairs(hadCarried) do
+			local state = Players[player]
+			if state ~= nil and state.Carried == nil then
+				destroyCarriedModel(player)
+			end
+		end
+	end
+
+	-- Peti dibuat pada tick ini: buat modelnya (Main pemilik visual).
+	if actions.cratesCreated ~= nil then
+		for _, crate in ipairs(actions.cratesCreated) do
+			createCrateModel(crate)
+		end
+	end
+
+	-- Arah conveyor dibalik sekali per flood.
+	if actions.conveyorFlip == true then
+		conveyorDirection = -conveyorDirection
+		print("[Main] arah conveyor dibalik: " .. tostring(conveyorDirection))
+	end
+
+	-- FloodEvent (HANYA Main yang fire): saat fase berubah (fase
+	-- baru + sisa detik), plus countdown tiap detik selama
+	-- Warning/Scramble.
+	if phaseChanged then
+		local remaining = 0
+		if FloodState.PhaseEndsAt ~= nil then
+			remaining = math.max(0, FloodState.PhaseEndsAt - now)
+		end
+		Remotes.FloodEvent:FireAllClients(FloodState.Phase, remaining)
+		print("[Main] flood fase -> " .. FloodState.Phase .. " (" .. tostring(remaining) .. " detik)")
+		if FloodState.Phase == "Flooding" then
+			applyFloodKnockback()
+		end
+	elseif FloodState.Phase == "Warning" or FloodState.Phase == "Scramble" then
+		local remaining = 0
+		if FloodState.PhaseEndsAt ~= nil then
+			remaining = math.max(0, FloodState.PhaseEndsAt - now)
+		end
+		Remotes.FloodEvent:FireAllClients(FloodState.Phase, remaining)
+	end
+
+	updateFloodVisuals(now)
+end
+
+-- Tick kedaluwarsa peti 1 detik (Stage 4, DESIGN.md 19.3): peti
+-- yang tidak diklaim dihapus setelah CRATE_LIFETIME (60 detik):
+-- hancurkan model, hapus dari Crates, catat di log. Peti yang
+-- sudah diklaim tidak perlu dibersihkan (modelnya sudah
+-- dihancurkan Main saat klaim).
+local function crateExpiryTick()
+	local now = os.clock()
+	for crateId, crate in pairs(Crates) do
+		if crate.Claimed == false and now > crate.ExpiresAt then
+			destroyCrateModel(crateId)
+			Crates[crateId] = nil
+			print("[Main] peti kedaluwarsa: " .. crateId)
+		end
+	end
+end
+
+-- Handler DebugFlood (Stage 4, DESIGN.md 19.2): HANYA mengatur
+-- flag FloodState.DebugPending = true bila tidak ada siklus
+-- berjalan (CycleActive == false) DAN belum ada permintaan debug
+-- yang menunggu (DebugPending == false). Bila siklus sedang
+-- berjalan atau sudah dijadwalkan, DITOLAK dengan Notify.
+-- Handler TIDAK memulai siklus dan TIDAK memanggil fungsi Flood —
+-- Flood.tick (dipanggil loop Main) yang mengonsumsi flag itu.
+local function onDebugFlood(player)
+	if FloodState.CycleActive == false and FloodState.DebugPending == false then
+		FloodState.DebugPending = true
+		print("[Main] DebugFlood: siklus flood dijadwalkan oleh " .. player.Name)
+	else
+		Remotes.Notify:FireClient(player, "Siklus flood sudah berjalan / sudah dijadwalkan")
+	end
+end
+
+-- Handler ClaimRequest (Stage 4): cek isLoadReady dulu, lalu
+-- Flood.claimCrate(Players, Crates, player, crateId, newUid).
+-- Sukses: hancurkan model peti + pasang visual carried.
+local function onClaimRequest(player, crateId)
+	if not isLoadReady(player) then
+		notifyLoadNotReady(player)
+		return
+	end
+	local ok, msg, _item, claimedCrateId = Flood.claimCrate(Players, Crates, player, crateId, newUid)
+	Remotes.Notify:FireClient(player, msg)
+	if ok and claimedCrateId ~= nil then
+		destroyCrateModel(claimedCrateId)
+		refreshCarriedVisual(player)
+	end
+end
+
+-- ---------------------------------------------------------------------------
 -- Lifecycle pemain — STAGE 2 (DataStore + load gating + LoadToken).
 -- (DESIGN.md 17.1, 17.2, 17.7 + MAIN-SERVER-PLAN langkah 4B.)
 -- ---------------------------------------------------------------------------
@@ -1116,6 +1596,7 @@ end
 
 createRemotes()
 buildWorld()
+buildFloodVisuals()
 connectLockBarriers()
 
 PlayersService.PlayerAdded:Connect(onPlayerAdded)
@@ -1124,13 +1605,15 @@ game:BindToClose(onBindToClose)
 
 -- Handler gameplay Stage 2: Place/Sell/Rebirth -> Economy.
 -- Handler gameplay Stage 3: StealRequest -> Steal, LockRequest -> Main.
--- ClaimRequest / DebugFlood BELUM di-wire (Stage 4);
--- tidak ada handler yang memanggil modul yang belum ada.
+-- Handler gameplay Stage 4: ClaimRequest -> Flood.claimCrate,
+-- DebugFlood -> onDebugFlood (hanya set flag DebugPending).
 Remotes.PlaceRequest.OnServerEvent:Connect(onPlaceRequest)
 Remotes.SellRequest.OnServerEvent:Connect(onSellRequest)
 Remotes.RebirthRequest.OnServerEvent:Connect(onRebirthRequest)
 Remotes.StealRequest.OnServerEvent:Connect(onStealRequest)
 Remotes.LockRequest.OnServerEvent:Connect(onLockRequest)
+Remotes.ClaimRequest.OnServerEvent:Connect(onClaimRequest)
+Remotes.DebugFlood.OnServerEvent:Connect(onDebugFlood)
 
 -- Pemain yang sudah ada sebelum script jalan (misal Play Solo di Studio).
 for _, player in ipairs(PlayersService:GetPlayers()) do
@@ -1140,11 +1623,30 @@ end
 -- Loop utama 1 detik (SATU-SATUNYA loop; milik Main).
 -- Stage 2: tambah incomeTick -> Economy.addIncome(Players, Remotes).
 -- Stage 3: tambah lockExpiryTick (auto-unlock, DESIGN.md 19.1).
--- Flood + crate expiry (Stage 4) menyusul.
+-- Stage 4: tambah floodTick + crateExpiryTick (DESIGN.md 19.2/19.3).
 task.spawn(function()
 	while true do
 		task.wait(1)
 		incomeTick()
 		lockExpiryTick()
+		floodTick()
+		crateExpiryTick()
+	end
+end)
+
+-- Loop conveyor 0,1 detik (milik Main, Stage 4): spawn Brainrot
+-- tiap SPAWN_INTERVAL (akumulator; dijeda selama fase Warning
+-- oleh spawnConveyorItem sendiri) + gerak Brainrot sepanjang
+-- conveyor (moveConveyorItems, 0,1 detik per langkah agar halus).
+task.spawn(function()
+	local spawnAccumulator = 0
+	while true do
+		task.wait(0.1)
+		spawnAccumulator = spawnAccumulator + 0.1
+		if spawnAccumulator >= Config.SPAWN_INTERVAL then
+			spawnAccumulator = spawnAccumulator - Config.SPAWN_INTERVAL
+			spawnConveyorItem()
+		end
+		moveConveyorItems(0.1)
 	end
 end)
