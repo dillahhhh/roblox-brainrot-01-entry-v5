@@ -143,10 +143,12 @@ local function makePart(name, size, position, material, color)
 end
 
 local function setupLighting()
+	-- Pasar malam yang terang di luar base (FIX ROUND 3): Brightness
+	-- + Ambient + OutdoorAmbient naik dari Config, ClockTime tetap 20.5.
 	Lighting.ClockTime = 20.5
-	Lighting.Brightness = 2
-	Lighting.Ambient = Color3.fromRGB(90, 76, 102)
-	Lighting.OutdoorAmbient = Color3.fromRGB(64, 56, 77)
+	Lighting.Brightness = Config.LIGHT_BRIGHTNESS
+	Lighting.Ambient = Config.LIGHT_AMBIENT
+	Lighting.OutdoorAmbient = Config.LIGHT_OUTDOOR_AMBIENT
 	Lighting.EnvironmentDiffuseScale = 0.6
 end
 
@@ -511,27 +513,39 @@ local function buildOneBase(baseIdx, xCenter, zCenter)
 
 	local board = Instance.new("BillboardGui")
 	board.Name = "OwnerBoard" .. baseIdx
-	board.Size = UDim2.fromOffset(320, 110)
+	board.Size = UDim2.fromOffset(Config.OWNER_BOARD_WIDTH, Config.OWNER_BOARD_HEIGHT)
 	board.StudsOffsetWorldSpace = Vector3.new(0, 0, 0)
 	board.AlwaysOnTop = false
 	board.LightInfluence = 0
 	board.Parent = boardAnchor
 
+	-- Layout papan (FIX ROUND 3): headshot 64x64 di kiri, nama pemilik
+	-- di kanan — bukan teks memenuhi seluruh papan. Nama pakai TextSize
+	-- tetap (TextScaled dimatikan) supaya terbaca dari conveyor tanpa
+	-- membesar memenuhi papan.
 	local ownerLabel = Instance.new("TextLabel")
 	ownerLabel.Name = "OwnerName"
-	ownerLabel.Size = UDim2.new(1, 0, 1, 0)
+	ownerLabel.Position = UDim2.new(0, Config.OWNER_HEADSHOT_SIZE + 16, 0, 0)
+	ownerLabel.Size = UDim2.new(1, -(Config.OWNER_HEADSHOT_SIZE + 24), 1, 0)
 	ownerLabel.BackgroundTransparency = 1
 	ownerLabel.Text = "BASE " .. baseIdx
 	ownerLabel.TextColor3 = Color3.fromRGB(255, 240, 200)
-	ownerLabel.TextScaled = true
+	ownerLabel.TextScaled = false
+	ownerLabel.TextSize = Config.OWNER_NAME_TEXT_SIZE
+	ownerLabel.TextWrapped = true
+	ownerLabel.TextXAlignment = Enum.TextXAlignment.Left
+	ownerLabel.TextYAlignment = Enum.TextYAlignment.Center
 	ownerLabel.Font = Enum.Font.GothamBold
 	ownerLabel.Parent = board
 
 	-- Foto kepala pemilik (diisi saat base terisi; Stage 1: placeholder kosong).
+	-- FIX ROUND 3: 64x64 dan TERINTEGRASI di dalam papan (kiri, sejajar
+	-- nama) — dulu 48x48 di luar papan (56px di kiri tepi) sehingga
+	-- mudah terlewat/tertutup di Studio.
 	local headshot = Instance.new("ImageLabel")
 	headshot.Name = "Headshot"
-	headshot.Size = UDim2.fromOffset(48, 48)
-	headshot.Position = UDim2.new(0, -56, 0, 0)
+	headshot.Size = UDim2.fromOffset(Config.OWNER_HEADSHOT_SIZE, Config.OWNER_HEADSHOT_SIZE)
+	headshot.Position = UDim2.new(0, 8, 0.5, -Config.OWNER_HEADSHOT_SIZE / 2)
 	headshot.BackgroundTransparency = 1
 	headshot.Image = ""
 	headshot.Parent = board
@@ -540,7 +554,11 @@ local function buildOneBase(baseIdx, xCenter, zCenter)
 	-- (Stage 3: setLockVisual menampilkan Transparency 0.5 + CanCollide).
 	local glassParts = {}
 	local glassColor = Color3.fromRGB(170, 220, 255)
-	local function addGlass(name, size, position)
+	-- isDoor = true untuk kaca sisi PINTU (menghadap conveyor): kaca
+	-- ini tetap TIDAK solid walau terkunci (FIX ROUND 3, item 6) —
+	-- pintu hanya pemicu Touched (teleport bukan pemilik), pemilik
+	-- lewat bebas. 3 dinding kaca lainnya tetap solid saat terkunci.
+	local function addGlass(name, size, position, isDoor)
 		local glass = Instance.new("Part")
 		glass.Name = name
 		glass.Size = size
@@ -550,14 +568,19 @@ local function buildOneBase(baseIdx, xCenter, zCenter)
 		glass.Transparency = 1
 		glass.Anchored = true
 		glass.CanCollide = false
+		if isDoor then
+			glass:SetAttribute("IsDoor", true)
+		end
 		glass.Parent = Workspace
 		table.insert(glassParts, glass)
 	end
 	-- Dinding utara/selatan (sepanjang x) dan timur/barat (sepanjang z).
 	addGlass("LockGlassN" .. baseIdx, Vector3.new(56, 6, 0.5), Vector3.new(xCenter, 3.8, zCenter - 23))
 	addGlass("LockGlassS" .. baseIdx, Vector3.new(56, 6, 0.5), Vector3.new(xCenter, 3.8, zCenter + 23))
-	addGlass("LockGlassW" .. baseIdx, Vector3.new(0.5, 6, 46), Vector3.new(xCenter - 28, 3.8, zCenter))
-	addGlass("LockGlassE" .. baseIdx, Vector3.new(0.5, 6, 46), Vector3.new(xCenter + 28, 3.8, zCenter))
+	-- Pintu menghadap conveyor: base kiri (xCenter -68) -> sisi timur,
+	-- base kanan (xCenter +68) -> sisi barat.
+	addGlass("LockGlassW" .. baseIdx, Vector3.new(0.5, 6, 46), Vector3.new(xCenter - 28, 3.8, zCenter), xCenter > 0)
+	addGlass("LockGlassE" .. baseIdx, Vector3.new(0.5, 6, 46), Vector3.new(xCenter + 28, 3.8, zCenter), xCenter < 0)
 
 	-- Lampu base (PointLight hangat, Range 30).
 	local lightAnchor = Instance.new("Part")
@@ -759,8 +782,8 @@ local function buildLamps()
 			bulb.Parent = Workspace
 			local light = Instance.new("PointLight")
 			light.Color = Color3.fromRGB(255, 190, 110)
-			light.Range = 22
-			light.Brightness = 1.5
+			light.Range = Config.LAMP_RANGE
+			light.Brightness = Config.LAMP_BRIGHTNESS
 			light.Parent = bulb
 		end
 	end
@@ -884,6 +907,11 @@ end
 
 -- Tampilkan/sembunyikan kaca lock base: terkunci -> Transparency 0.5 +
 -- CanCollide true; buka -> Transparency 1 + CanCollide false.
+-- FIX ROUND 3 (item 6): kaca sisi PINTU (atribut IsDoor) tetap
+-- CanCollide false walau terkunci — pemilik masuk-keluar bebas lewat
+-- pintu, bukan pemilik tetap di-teleport oleh handler Touched dan
+-- ditolak Steal.trySteal saat terkunci. Transparency pintu tetap 0.5
+-- saat terkunci supaya terlihat.
 local function setLockVisual(baseIdx, locked)
 	local visuals = BaseVisuals[baseIdx]
 	if not visuals or not visuals.GlassParts then
@@ -892,7 +920,9 @@ local function setLockVisual(baseIdx, locked)
 	for _, glass in ipairs(visuals.GlassParts) do
 		if locked then
 			glass.Transparency = 0.5
-			glass.CanCollide = true
+			if glass:GetAttribute("IsDoor") ~= true then
+				glass.CanCollide = true
+			end
 		else
 			glass.Transparency = 1
 			glass.CanCollide = false
@@ -1025,46 +1055,71 @@ local CarriedModels = {} -- [Player] -> Model Brainrot yang dibawa | nil
 -- Ciri khas tiap Brainrot (DESIGN.md 3): badan + kepala + mata +
 -- satu ciri pembeda. Ukuran/offset dalam satuan skala 1 (dikalikan
 -- scale saat dibuat: pedestal 2.0, dibawa 1.4, peti 1.6 di Stage 4).
+-- FIX ROUND 3: detail diperkaya per jenis (sayap/ekor/cangkir/telinga/
+-- gong/dll) — jenis, roster, harga, dan income TIDAK berubah.
+-- spec.Shape opsional: Enum.PartType (Ball untuk telinga/gong/dll).
 local BRAINROT_FEATURES = {
 	AyamIkan = {
 		{ Name = "Beak", Size = Vector3.new(0.3, 0.25, 0.4), Offset = Vector3.new(0, 1.95, 0.75), Color = Color3.fromRGB(255, 150, 0) },
 		{ Name = "Comb", Size = Vector3.new(0.5, 0.35, 0.15), Offset = Vector3.new(0, 2.75, 0), Color = Color3.fromRGB(220, 40, 40) },
+		{ Name = "WingL", Size = Vector3.new(0.12, 0.7, 0.8), Offset = Vector3.new(-0.85, 1.1, 0), Color = Color3.fromRGB(250, 250, 245) },
+		{ Name = "WingR", Size = Vector3.new(0.12, 0.7, 0.8), Offset = Vector3.new(0.85, 1.1, 0), Color = Color3.fromRGB(250, 250, 245) },
+		{ Name = "TailFin", Size = Vector3.new(0.8, 0.5, 0.15), Offset = Vector3.new(0, 1.3, -0.9), Color = Color3.fromRGB(255, 150, 0) },
 	},
 	BabiTerbang = {
-		{ Name = "WingL", Size = Vector3.new(0.9, 0.08, 0.6), Offset = Vector3.new(-1.1, 1.1, 0), Color = Color3.fromRGB(245, 245, 245) },
-		{ Name = "WingR", Size = Vector3.new(0.9, 0.08, 0.6), Offset = Vector3.new(1.1, 1.1, 0), Color = Color3.fromRGB(245, 245, 245) },
+		{ Name = "WingL", Size = Vector3.new(1.1, 0.08, 0.7), Offset = Vector3.new(-1.15, 1.3, 0), Color = Color3.fromRGB(245, 245, 245) },
+		{ Name = "WingR", Size = Vector3.new(1.1, 0.08, 0.7), Offset = Vector3.new(1.15, 1.3, 0), Color = Color3.fromRGB(245, 245, 245) },
+		{ Name = "Snout", Size = Vector3.new(0.5, 0.35, 0.3), Offset = Vector3.new(0, 1.9, 0.65), Color = Color3.fromRGB(255, 170, 190) },
+		{ Name = "TailCurl", Size = Vector3.new(0.3, 0.3, 0.3), Offset = Vector3.new(0, 1.0, -0.9), Color = Color3.fromRGB(250, 200, 210), Shape = Enum.PartType.Ball },
 	},
 	AnjingEsTeh = {
 		{ Name = "EarL", Size = Vector3.new(0.3, 0.6, 0.3), Offset = Vector3.new(-0.45, 2.8, 0), Color = Color3.fromRGB(120, 70, 30) },
 		{ Name = "EarR", Size = Vector3.new(0.3, 0.6, 0.3), Offset = Vector3.new(0.45, 2.8, 0), Color = Color3.fromRGB(120, 70, 30) },
 		{ Name = "Snout", Size = Vector3.new(0.5, 0.4, 0.4), Offset = Vector3.new(0, 1.85, 0.65), Color = Color3.fromRGB(200, 160, 110) },
+		{ Name = "Tail", Size = Vector3.new(0.25, 0.7, 0.25), Offset = Vector3.new(0, 0.9, -0.95), Color = Color3.fromRGB(120, 70, 30) },
+		{ Name = "TeaCup", Size = Vector3.new(0.45, 0.5, 0.45), Offset = Vector3.new(0.3, 2.85, 0), Color = Color3.fromRGB(180, 120, 60) },
 	},
 	KucingRendang = {
 		{ Name = "EarL", Size = Vector3.new(0.35, 0.5, 0.15), Offset = Vector3.new(-0.4, 2.8, 0), Color = Color3.fromRGB(60, 60, 60) },
 		{ Name = "EarR", Size = Vector3.new(0.35, 0.5, 0.15), Offset = Vector3.new(0.4, 2.8, 0), Color = Color3.fromRGB(60, 60, 60) },
 		{ Name = "Tail", Size = Vector3.new(0.25, 0.9, 0.25), Offset = Vector3.new(0, 0.9, -0.95), Color = Color3.fromRGB(60, 60, 60) },
+		{ Name = "Nose", Size = Vector3.new(0.2, 0.15, 0.1), Offset = Vector3.new(0, 1.95, 0.65), Color = Color3.fromRGB(255, 120, 150) },
+		{ Name = "WhiskerL", Size = Vector3.new(0.5, 0.05, 0.05), Offset = Vector3.new(-0.55, 1.95, 0.62), Color = Color3.fromRGB(240, 240, 240) },
+		{ Name = "WhiskerR", Size = Vector3.new(0.5, 0.05, 0.05), Offset = Vector3.new(0.55, 1.95, 0.62), Color = Color3.fromRGB(240, 240, 240) },
 	},
 	BeruangDurian = {
 		{ Name = "Spike1", Size = Vector3.new(0.3, 0.5, 0.3), Offset = Vector3.new(-0.4, 1.7, 0), Color = Color3.fromRGB(30, 100, 40) },
 		{ Name = "Spike2", Size = Vector3.new(0.3, 0.5, 0.3), Offset = Vector3.new(0, 1.85, 0), Color = Color3.fromRGB(30, 100, 40) },
 		{ Name = "Spike3", Size = Vector3.new(0.3, 0.5, 0.3), Offset = Vector3.new(0.4, 1.7, 0), Color = Color3.fromRGB(30, 100, 40) },
+		{ Name = "EarL", Size = Vector3.new(0.5, 0.5, 0.5), Offset = Vector3.new(-0.5, 2.7, 0), Color = Color3.fromRGB(110, 70, 40), Shape = Enum.PartType.Ball },
+		{ Name = "EarR", Size = Vector3.new(0.5, 0.5, 0.5), Offset = Vector3.new(0.5, 2.7, 0), Color = Color3.fromRGB(110, 70, 40), Shape = Enum.PartType.Ball },
+		{ Name = "Snout", Size = Vector3.new(0.6, 0.4, 0.4), Offset = Vector3.new(0, 1.85, 0.62), Color = Color3.fromRGB(190, 150, 110) },
 	},
 	HarimauApi = {
 		{ Name = "Flame", Size = Vector3.new(0.5, 0.7, 0.2), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(255, 90, 0), Material = Enum.Material.Neon },
 		{ Name = "EarL", Size = Vector3.new(0.3, 0.4, 0.15), Offset = Vector3.new(-0.4, 2.75, 0), Color = Color3.fromRGB(200, 60, 20) },
 		{ Name = "EarR", Size = Vector3.new(0.3, 0.4, 0.15), Offset = Vector3.new(0.4, 2.75, 0), Color = Color3.fromRGB(200, 60, 20) },
+		{ Name = "Tail", Size = Vector3.new(0.3, 0.9, 0.3), Offset = Vector3.new(0, 0.9, -0.95), Color = Color3.fromRGB(230, 90, 20) },
+		{ Name = "StripeL", Size = Vector3.new(0.08, 1.0, 1.0), Offset = Vector3.new(-0.82, 1.0, 0), Color = Color3.fromRGB(40, 20, 10) },
+		{ Name = "StripeR", Size = Vector3.new(0.08, 1.0, 1.0), Offset = Vector3.new(0.82, 1.0, 0), Color = Color3.fromRGB(40, 20, 10) },
 	},
 	GajahGamelan = {
 		{ Name = "Trunk", Size = Vector3.new(0.35, 1.0, 0.35), Offset = Vector3.new(0, 1.4, 0.7), Color = Color3.fromRGB(150, 150, 150) },
 		{ Name = "TuskL", Size = Vector3.new(0.18, 0.18, 0.8), Offset = Vector3.new(-0.45, 1.7, 0.75), Color = Color3.fromRGB(245, 245, 240) },
 		{ Name = "TuskR", Size = Vector3.new(0.18, 0.18, 0.8), Offset = Vector3.new(0.45, 1.7, 0.75), Color = Color3.fromRGB(245, 245, 240) },
+		{ Name = "EarL", Size = Vector3.new(0.25, 1.2, 1.0), Offset = Vector3.new(-0.75, 2.1, -0.1), Color = Color3.fromRGB(170, 170, 170), Shape = Enum.PartType.Ball },
+		{ Name = "EarR", Size = Vector3.new(0.25, 1.2, 1.0), Offset = Vector3.new(0.75, 2.1, -0.1), Color = Color3.fromRGB(170, 170, 170), Shape = Enum.PartType.Ball },
+		{ Name = "Gong", Size = Vector3.new(0.9, 0.9, 0.2), Offset = Vector3.new(0, 1.2, -0.85), Color = Color3.fromRGB(255, 210, 80), Material = Enum.Material.Metal, Shape = Enum.PartType.Ball },
 	},
 }
 
-local function addBrainrotPart(model, name, size, offset, color, material)
+local function addBrainrotPart(model, name, size, offset, color, material, shape)
 	local part = Instance.new("Part")
 	part.Name = name
 	part.Size = size
+	if shape ~= nil then
+		part.Shape = shape
+	end
 	part.CFrame = CFrame.new(offset)
 	part.Material = material or Enum.Material.SmoothPlastic
 	part.Color = color
@@ -1098,17 +1153,35 @@ local function createBrainrotModel(kind, scale)
 	local head = addBrainrotPart(model, "Head",
 		Vector3.new(1.2, 1.2, 1.2) * s, Vector3.new(0, 2.05 * s, 0),
 		Color3.fromRGB(245, 240, 230), Enum.Material.SmoothPlastic)
+	-- Mata hitam + highlight putih (FIX ROUND 3): mata lebih hidup.
 	addBrainrotPart(model, "EyeL",
 		Vector3.new(0.22, 0.28, 0.1) * s, Vector3.new(-0.3 * s, 2.1 * s, 0.62 * s),
 		Color3.fromRGB(20, 20, 20), Enum.Material.SmoothPlastic)
 	addBrainrotPart(model, "EyeR",
 		Vector3.new(0.22, 0.28, 0.1) * s, Vector3.new(0.3 * s, 2.1 * s, 0.62 * s),
 		Color3.fromRGB(20, 20, 20), Enum.Material.SmoothPlastic)
+	addBrainrotPart(model, "EyeHighlightL",
+		Vector3.new(0.08, 0.1, 0.05) * s, Vector3.new(-0.36 * s, 2.16 * s, 0.68 * s),
+		Color3.fromRGB(255, 255, 255), Enum.Material.SmoothPlastic)
+	addBrainrotPart(model, "EyeHighlightR",
+		Vector3.new(0.08, 0.1, 0.05) * s, Vector3.new(0.24 * s, 2.16 * s, 0.68 * s),
+		Color3.fromRGB(255, 255, 255), Enum.Material.SmoothPlastic)
+	-- Kaki kecil di dasar badan + kalung aksen warna rarity (FIX ROUND 3):
+	-- proporsi lebih rapi, tingkat rarity langsung terbaca dari kalung.
+	addBrainrotPart(model, "FootL",
+		Vector3.new(0.45, 0.3, 0.6) * s, Vector3.new(-0.4 * s, 0.15 * s, 0.15 * s),
+		Color3.fromRGB(60, 55, 50), Enum.Material.SmoothPlastic)
+	addBrainrotPart(model, "FootR",
+		Vector3.new(0.45, 0.3, 0.6) * s, Vector3.new(0.4 * s, 0.15 * s, 0.15 * s),
+		Color3.fromRGB(60, 55, 50), Enum.Material.SmoothPlastic)
+	addBrainrotPart(model, "RarityCollar",
+		Vector3.new(1.7, 0.22, 1.7) * s, Vector3.new(0, 1.5 * s, 0),
+		entry.Color, Enum.Material.SmoothPlastic)
 	local features = BRAINROT_FEATURES[kind]
 	if features then
 		for _, spec in ipairs(features) do
 			addBrainrotPart(model, spec.Name, spec.Size * s, spec.Offset * s,
-				spec.Color, spec.Material)
+				spec.Color, spec.Material, spec.Shape)
 		end
 	end
 	-- Label nama + rarity + income di atas model.
@@ -2176,19 +2249,20 @@ task.spawn(function()
 	end
 end)
 
--- Loop conveyor 0,1 detik (milik Main, Stage 4): spawn Brainrot
--- tiap SPAWN_INTERVAL (akumulator; dijeda selama fase Warning
--- oleh spawnConveyorItem sendiri) + gerak Brainrot sepanjang
--- conveyor (moveConveyorItems, 0,1 detik per langkah agar halus).
-task.spawn(function()
-	local spawnAccumulator = 0
-	while true do
-		task.wait(0.1)
-		spawnAccumulator = spawnAccumulator + 0.1
-		if spawnAccumulator >= Config.SPAWN_INTERVAL then
-			spawnAccumulator = spawnAccumulator - Config.SPAWN_INTERVAL
-			spawnConveyorItem()
-		end
-		moveConveyorItems(0.1)
+-- Loop conveyor (milik Main, Stage 4): spawn Brainrot tiap
+-- SPAWN_INTERVAL (akumulator dt; dijeda selama fase Warning oleh
+-- spawnConveyorItem sendiri) + gerak Brainrot sepanjang conveyor.
+-- FIX ROUND 3: digerakkan RunService.Heartbeat dengan dt (~60 fps,
+-- ~0.27 stud/frame) — dulu task.wait(0.1) + moveConveyorItems(0.1),
+-- 10 langkah/detik x 1.6 stud/langkah sehingga terlihat patah-patah.
+-- Kecepatan tetap 16 stud/detik (moveConveyorItems memakai dt);
+-- interval spawn tetap 3.5 detik; loop 1 detik lain tidak berubah.
+local conveyorSpawnAccumulator = 0
+RunService.Heartbeat:Connect(function(dt)
+	conveyorSpawnAccumulator = conveyorSpawnAccumulator + dt
+	if conveyorSpawnAccumulator >= Config.SPAWN_INTERVAL then
+		conveyorSpawnAccumulator = conveyorSpawnAccumulator - Config.SPAWN_INTERVAL
+		spawnConveyorItem()
 	end
+	moveConveyorItems(dt)
 end)

@@ -134,6 +134,23 @@ Config.SAFE_HALF_Z = 23
 -- sehingga yang tersisa hanya z = -150, 136, 149 per sisi.
 Config.TREE_CLEAR_HALF_Z = 40
 
+-- Pencahayaan malam (FIX ROUND 3, 20 Nov): area luar base diterangkan
+-- tanpa menghilangkan nuansa pasar malam — Brightness naik 2 -> 2.8,
+-- Ambient + OutdoorAmbient lebih terang, lampu jalan lebih kuat.
+Config.LIGHT_BRIGHTNESS = 2.8
+Config.LIGHT_AMBIENT = Color3.fromRGB(130, 110, 140)
+Config.LIGHT_OUTDOOR_AMBIENT = Color3.fromRGB(100, 88, 115)
+Config.LAMP_BRIGHTNESS = 2
+Config.LAMP_RANGE = 26
+
+-- Papan nama base (FIX ROUND 3, 20 Nov): papan 240x80 (dulu 320x110),
+-- headshot 64x64 di kiri + nama di kanan, teks tetap TextSize 26
+-- (TextScaled dimatikan agar nama tidak memenuhi seluruh papan).
+Config.OWNER_BOARD_WIDTH = 240
+Config.OWNER_BOARD_HEIGHT = 80
+Config.OWNER_HEADSHOT_SIZE = 64
+Config.OWNER_NAME_TEXT_SIZE = 26
+
 -- Layout base: 8 base, 4 kiri (x = -68) + 4 kanan (x = +68).
 Config.BASE_X = { -68, 68 }
 Config.BASE_Z = { 90, 25, -40, -105 }
