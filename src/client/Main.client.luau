@@ -140,6 +140,8 @@ local Remotes = {
 	ClaimRequest = waitRemote("ClaimRequest"),
 	TakeRequest = waitRemote("TakeRequest"),
 	SellCarriedRequest = waitRemote("SellCarriedRequest"),
+	SlapRequest = waitRemote("SlapRequest"), -- FIX ROUND 16: mukul
+	PickupRequest = waitRemote("PickupRequest"), -- FIX ROUND 16: ambil Brainrot jatuh
 	DebugFlood = waitRemote("DebugFlood"),
 }
 
@@ -287,10 +289,10 @@ sellCarriedButton = makeButton(screenGui, "SellCarriedButton",
 sellCarriedButton.AnchorPoint = Vector2.new(0.5, 1)
 sellCarriedButton.Visible = false
 
--- Petunjuk lari di pojok kiri bawah (tidak menutupi menu Roblox).
+-- Petunjuk lari + pukul di pojok kiri bawah (tidak menutupi menu Roblox).
 local sprintHint = makeLabel(screenGui, "SprintHint",
-	UDim2.fromOffset(160, 28), UDim2.new(0, 12, 1, -10),
-	"Shift = Lari", 16, Color3.fromRGB(255, 255, 255))
+	UDim2.fromOffset(260, 28), UDim2.new(0, 12, 1, -10),
+	"Shift = Lari • F = Pukul", 16, Color3.fromRGB(255, 255, 255))
 sprintHint.AnchorPoint = Vector2.new(0, 1)
 sprintHint.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -394,6 +396,12 @@ local rebirthButton = makeButton(actionFrame, "RebirthButton",
 local indexButton = makeButton(actionFrame, "IndexButton",
 	UDim2.fromOffset(180, 44), UDim2.new(0, 0, 0, 0),
 	"Indeks (0/35)", Color3.fromRGB(40, 90, 160))
+-- FIX ROUND 16 (20 Nov, perintah bos "tambahin mukul"): tombol Pukul
+-- + tombol keyboard F (lihat InputBegan di bawah). Kirim SlapRequest;
+-- server yang mencari korban terdekat + knockback + jatuhkan Brainrot.
+local slapButton = makeButton(actionFrame, "SlapButton",
+	UDim2.fromOffset(180, 44), UDim2.new(0, 0, 0, 0),
+	"Pukul (F)", Color3.fromRGB(160, 50, 50))
 local debugButton = makeButton(actionFrame, "DebugFloodButton",
 	UDim2.fromOffset(180, 30), UDim2.new(0, 0, 0, 0),
 	"Debug Flood", Color3.fromRGB(90, 90, 90))
@@ -851,6 +859,13 @@ trackConnection(Remotes.Notify.OnClientEvent:Connect(function(text)
 		clearCarried()
 		return
 	end
+	-- FIX ROUND 16: bawaan jatuh saat dipukul — server memberitahu
+	-- lewat Notify "Brainrot yang kamu bawa jatuh!" (onSlapRequest),
+	-- supaya pelacakan lokal ikut dibersihkan.
+	if string.find(text, "jatuh") ~= nil then
+		clearCarried()
+		return
+	end
 	-- Rebirth sukses: tangan + slot dihapus, hitungan lokal naik.
 	if string.find(text, "Rebirth berhasil") ~= nil then
 		clearCarried()
@@ -882,6 +897,11 @@ trackConnection(ProximityPromptService.PromptShown:Connect(function(prompt, inpu
 	local crateId = prompt:GetAttribute("CrateId")
 	if type(crateId) == "string" and crateId ~= "" then
 		prompt.ActionText = "Buka Peti"
+		return
+	end
+	-- FIX ROUND 16: item jatuh di tanah -> "Ambil".
+	if prompt:GetAttribute("PromptKind") == "Dropped" then
+		prompt.ActionText = "Ambil"
 		return
 	end
 	if prompt:GetAttribute("PromptKind") ~= "Pedestal" then
@@ -927,6 +947,15 @@ trackConnection(ProximityPromptService.PromptTriggered:Connect(function(prompt, 
 		end
 		return
 	end
+	-- FIX ROUND 16: item jatuh di tanah: PromptKind "Dropped" +
+	-- atribut DroppedUid -> PickupRequest(uid).
+	if prompt:GetAttribute("PromptKind") == "Dropped" then
+		local uid = prompt:GetAttribute("DroppedUid")
+		if type(uid) == "string" and uid ~= "" then
+			Remotes.PickupRequest:FireServer(uid)
+		end
+		return
+	end
 	if prompt:GetAttribute("PromptKind") ~= "Pedestal" then
 		return
 	end
@@ -959,6 +988,12 @@ end))
 trackConnection(lockButton.MouseButton1Click:Connect(function()
 	Remotes.LockRequest:FireServer(not locked)
 	-- Label berubah hanya saat Notify server tiba (lihat header butir 3).
+end))
+
+-- Tombol "Pukul": kirim SlapRequest; server yang mencari korban
+-- terdekat (FIX ROUND 16). Tombol keyboard F melakukan hal yang sama.
+trackConnection(slapButton.MouseButton1Click:Connect(function()
+	Remotes.SlapRequest:FireServer()
 end))
 
 -- Tombol "Jual yang dibawa": hanya terlihat saat sedang membawa;
@@ -1011,6 +1046,11 @@ trackConnection(UserInputService.InputBegan:Connect(function(input, gameProcesse
 	if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
 		sprinting = true
 		applyWalkSpeed()
+	end
+	-- FIX ROUND 16: tombol F = Pukul (sama seperti tombol HUD "Pukul").
+	-- gameProcessed di atas sudah menolak input saat mengetik di chat.
+	if input.KeyCode == Enum.KeyCode.F then
+		Remotes.SlapRequest:FireServer()
 	end
 end))
 

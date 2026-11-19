@@ -49,6 +49,9 @@ local Lighting = game:GetService("Lighting")
 local Players = {} -- [Player] -> PlayerState (bentuk: DESIGN.md 16.4)
 local ConveyorItems = {} -- array ConveyorItem (diisi loop spawn, Stage 4+)
 local Crates = {} -- [crateId] -> CrateState (diisi Flood, Stage 4)
+local DroppedItems = {} -- [uid] -> {Uid, Kind, Position, ExpiresAt} (FIX ROUND 16: Brainrot jatuh saat pembawanya dipukul)
+local DroppedModels = {} -- [uid] -> Model item jatuh | nil
+local LastSlapAt = {} -- [Player] -> os.clock() pukulan terakhir (cooldown 1 detik, FIX ROUND 16)
 local Remotes = {} -- [nama] -> RemoteEvent di ReplicatedStorage.GameRemotes
 local World = {
 	PedestalPos = {}, -- [baseIdx][slotIdx] -> Vector3 (permukaan atas pedestal)
@@ -109,6 +112,8 @@ local REMOTE_NAMES = {
 	"ClaimRequest",
 	"TakeRequest",
 	"SellCarriedRequest",
+	"SlapRequest", -- FIX ROUND 16: mukul (slap) — penyerang kirim, server cari korban
+	"PickupRequest", -- FIX ROUND 16: ambil Brainrot jatuh dari tanah
 	"DebugFlood",
 }
 
@@ -1330,7 +1335,7 @@ local function buildExhibitionTable()
 	-- alas (y = 2.5). Pemain baru spawn langsung melihat tulisan.
 	local signBoard = makePart(
 		"ExhibitionTableSign",
-		Vector3.new(0.15, 1.4, 14),
+		Vector3.new(0.15, 1.4, 10), -- FIX ROUND 16: 14 -> 10, menyesuaikan meja baru (dalam 12)
 		Vector3.new(centerX - topSize.X / 2 - 0.075, 1.8, centerZ),
 		Enum.Material.Wood,
 		Color3.fromRGB(150, 30, 30)
@@ -1352,29 +1357,25 @@ local function buildExhibitionTable()
 	signText.TextSize = Config.EXHIBITION_SIGN_TEXT_SIZE
 	signText.Font = Enum.Font.GothamBold
 	signText.Parent = signGui
-	-- 35 Brainrot pajangan (FITUR INDEX): 7 baris x 5 kolom, SATU
-	-- TIER SATU BARIS (baris 1 = 5 Common, dst — RosterOrder sudah
-	-- berkelompok per tier). Jarak lega: kolom 7 stud, baris 6 stud.
-	-- Tiap model berdiri di atas PIRINGAN warna rarity-nya sendiri,
-	-- dan tiap baris punya LABEL NAMA TIER di ujung barat. Model
-	-- menghadap barat (-X, ke arah spawn). Tanpa prompt, tanpa remote.
+	-- 7 Brainrot pajangan (FIX ROUND 16, perintah bos: pameran cuma
+	-- 7 Brainrot, meja dipotong): 7 jenis ASLI (Config.EXHIBITION_KINDS,
+	-- satu per tier), SATU BARIS di tengah meja (z = centerZ), kolom
+	-- 7 stud (x = centerX - 21 .. centerX + 21). Tiap model berdiri
+	-- di atas PIRINGAN warna rarity-nya sendiri, dan tiap model
+	-- punya LABEL NAMA TIER sendiri di sisi selatan (lihat di bawah).
+	-- Model menghadap barat (-X, ke arah spawn). Tanpa prompt,
+	-- tanpa remote. 28 jenis baru TIDAK dipajang (Index tetap 35).
 	local surfaceY = topY + topSize.Y / 2
 	local spacingX = Config.EXHIBITION_SPACING_X
-	local cols = Config.EXHIBITION_COLS
-	local rowSpacing = Config.EXHIBITION_ROW_SPACING_Z
-	local rows = math.ceil(#Config.RosterOrder / cols)
+	local kinds = Config.EXHIBITION_KINDS
 	local discDiameter = Config.EXHIBITION_DISC_DIAMETER
 	local discHeight = Config.EXHIBITION_DISC_HEIGHT
-	for i, kind in ipairs(Config.RosterOrder) do
+	for i, kind in ipairs(kinds) do
 		local entry = Config.Roster[kind]
 		-- (Tanpa `continue`: file ini harus lolos `luac -p` Lua 5.1.)
 		if entry ~= nil then
-			local col = (i - 1) % cols
-			local row = math.floor((i - 1) / cols)
-			local xOffset = (col - (cols - 1) / 2) * spacingX
-			local zOffset = (row - (rows - 1) / 2) * rowSpacing
-			local modelX = centerX + xOffset
-			local modelZ = centerZ + zOffset
+			local modelX = centerX + (i - (#kinds + 1) / 2) * spacingX
+			local modelZ = centerZ
 			-- Piringan warna rarity di bawah model (silinder pipih).
 			local disc = Instance.new("Part")
 			disc.Name = "ExhibitionDisc_" .. kind
@@ -1396,45 +1397,40 @@ local function buildExhibitionTable()
 			end
 		end
 	end
-	-- Label nama tier di ujung barat tiap baris: lempeng datar di
-	-- atas meja (x ~12.25, di luar piringan kolom pertama x 15.5),
-	-- teks warna tier di atasnya, menghadap ke atas.
-	for row = 1, rows do
-		local firstKind = Config.RosterOrder[(row - 1) * cols + 1]
-		local firstEntry = firstKind and Config.Roster[firstKind] or nil
+	-- Label nama tier PER MODEL (FIX ROUND 16: tiap model kini
+	-- tiernya sendiri, jadi tiap model punya labelnya sendiri):
+	-- lempeng datar di atas meja di sisi SELATAN tiap piringan
+	-- (z = centerZ + 4.2, di dalam meja z 156..168), teks warna
+	-- tier menghadap ke atas. Pelat 4x2.5, TextSize 28 — "Ultra
+	-- Rare"/"Legendary" muat satu baris. Antar-pelat 3 stud (pusat
+	-- berjarak 7) — tidak bertabrakan, tidak menutupi Brainrot.
+	for i, kind in ipairs(kinds) do
+		local entry = Config.Roster[kind]
 		-- (Tanpa `continue`: file ini harus lolos `luac -p` Lua 5.1.)
-		if firstEntry ~= nil then
-			local rowZ = centerZ + (row - (rows - 1) / 2) * rowSpacing
+		if entry ~= nil then
+			local modelX = centerX + (i - (#kinds + 1) / 2) * spacingX
 			local labelPlate = makePart(
-				"ExhibitionRowLabel",
-				Vector3.new(4.5, 0.1, 5),
-				Vector3.new(centerX - topSize.X / 2 + 2.25, surfaceY + 0.05, rowZ),
+				"ExhibitionTierLabel",
+				Vector3.new(4, 0.1, 2.5),
+				Vector3.new(modelX, surfaceY + 0.05, centerZ + 4.2),
 				Enum.Material.SmoothPlastic,
 				Color3.fromRGB(30, 30, 35)
 			)
 			labelPlate.CanCollide = false
 			local labelGui = Instance.new("SurfaceGui")
-			labelGui.Name = "ExhibitionRowLabelGui"
+			labelGui.Name = "ExhibitionTierLabelGui"
 			labelGui.Face = Enum.NormalId.Top
 			labelGui.PixelsPerStud = 50
 			labelGui.LightInfluence = 0
 			labelGui.Parent = labelPlate
 			local labelText = Instance.new("TextLabel")
-			labelText.Name = "RowTier"
+			labelText.Name = "Tier"
 			labelText.Size = UDim2.new(1, 0, 1, 0)
 			labelText.BackgroundTransparency = 1
-			labelText.Text = firstEntry.Rarity
-			labelText.TextColor3 = firstEntry.Color
+			labelText.Text = entry.Rarity
+			labelText.TextColor3 = entry.Color
 			labelText.TextScaled = false
-			-- FIX ROUND 13 (20 Nov — perintah bos: tulisan rarity di
-			-- pameran digedein): TextSize 20 -> 40 (2x) supaya terbaca
-			-- jelas dari arah spawn; pelat ikut diperbesar 3.5x4 ->
-			-- 4.5x5 agar "Ultra Rare"/"Legendary" tetap muat satu
-			-- baris (wrap bila mepet tetap muat 2 baris). Pelat x
-			-- 10-14.5 (1 stud dari piringan kolom pertama x 15.5),
-			-- antar-pelat 1 stud (baris berjarak 6) — tidak menutupi
-			-- Brainrot dan tidak bertabrakan antar-baris.
-			labelText.TextSize = 40
+			labelText.TextSize = 28
 			labelText.TextWrapped = true
 			labelText.Font = Enum.Font.GothamBold
 			labelText.Parent = labelGui
@@ -2944,6 +2940,52 @@ local function destroyCrateModel(crateId)
 	end
 end
 
+-- ---------------------------------------------------------------------------
+-- Item jatuh (FIX ROUND 16, perintah bos "tambahin mukul"): Brainrot
+-- yang dibawa pemain jatuh ke tanah saat pembawanya dipukul.
+-- Model = createBrainrotModel (skala dibawa 1.8), berdiri di tanah
+-- (part Anchored dari createBrainrotModel, seperti model peti) +
+-- ProximityPrompt "Ambil" (RequiresLineOfSight = false, jarak 12 —
+-- kelas bug yang sama dengan prompt conveyor/peti round 10:
+-- sinar LOS ke Body menembus bola aura). Client (Stage 5) membaca
+-- PromptKind "Dropped" + DroppedUid lalu mengirim PickupRequest.
+-- ---------------------------------------------------------------------------
+
+local DROPPED_LIFETIME = 60 -- detik sebelum item jatuh hilang sendiri
+
+local function createDroppedModel(item)
+	local entry = Config.Roster[item.Kind]
+	local model = createBrainrotModel(item.Kind, Config.BRAINROT_SCALE_CARRIED)
+	if not model then
+		return nil
+	end
+	model.Name = "Dropped_" .. item.Uid
+	model:PivotTo(CFrame.new(item.Position))
+	local body = model.PrimaryPart
+	if body ~= nil then
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.ActionText = "Ambil"
+		prompt.ObjectText = (entry and entry.DisplayName or item.Kind)
+		prompt.HoldDuration = 0
+		prompt.MaxActivationDistance = 12
+		prompt.RequiresLineOfSight = false
+		prompt:SetAttribute("PromptKind", "Dropped")
+		prompt:SetAttribute("DroppedUid", item.Uid)
+		prompt.Parent = body
+	end
+	model.Parent = Workspace
+	DroppedModels[item.Uid] = model
+	return model
+end
+
+local function destroyDroppedModel(uid)
+	local model = DroppedModels[uid]
+	if model then
+		model:Destroy()
+		DroppedModels[uid] = nil
+	end
+end
+
 -- Visual flood milik Main (DESIGN.md 7, 19.2): dinding air kaca
 -- biru, sirene banjir, dan 14 debris (baju/pintu/jendela).
 -- Dibangun sekali saat server start; dinding air digerakkan
@@ -3205,6 +3247,20 @@ local function crateExpiryTick()
 	end
 end
 
+-- Tick kedaluwarsa item jatuh 1 detik (FIX ROUND 16): item yang
+-- tidak diambil dalam DROPPED_LIFETIME (60 detik) hilang sendiri.
+-- Flood TIDAK menyentuh item jatuh (sengaja — cukup kedaluwarsa).
+local function droppedExpiryTick()
+	local now = os.clock()
+	for uid, item in pairs(DroppedItems) do
+		if now > item.ExpiresAt then
+			destroyDroppedModel(uid)
+			DroppedItems[uid] = nil
+			print("[Main] item jatuh kedaluwarsa: " .. uid)
+		end
+	end
+end
+
 -- Handler DebugFlood (Stage 4, DESIGN.md 19.2): HANYA mengatur
 -- flag FloodState.DebugPending = true bila tidak ada siklus
 -- berjalan (CycleActive == false) DAN belum ada permintaan debug
@@ -3317,6 +3373,144 @@ local function onTakeRequest(player, uid)
 	markCollected(player, item.Kind) -- FITUR INDEX: beli conveyor = dapat
 	Economy.sendMoneyUpdate(Players, player, Remotes) -- FIX ROUND 11 (20 Nov): ditulis ulang; uang baru langsung terlihat, bukan menunggu tick income
 	Remotes.Notify:FireClient(player, "Kamu membeli " .. rosterEntry.DisplayName .. " seharga $" .. tostring(price) .. "!") -- FIX ROUND 11 (20 Nov): ditulis ulang
+end
+
+-- ---------------------------------------------------------------------------
+-- Mukul (FIX ROUND 16, perintah bos 06:35 WIB "tambahin mukul"):
+-- seperti game aslinya — pukul pemain lain dari dekat; korban
+-- terlempar (knockback) dan Brainrot yang sedang dibawanya JATUH
+-- ke tanah sebagai item yang bisa diambil siapa saja.
+-- ---------------------------------------------------------------------------
+
+-- Handler SlapRequest (tanpa argumen target; server yang mencari
+-- korban): validasi — (a) load siap, (b) cooldown server-side 1
+-- detik per penyerang (LastSlapAt), (c) ada HumanoidRootPart
+-- penyerang. Korban = pemain LAIN yang terdekat dalam
+-- Config.SLAP_RANGE (6 stud), karakter ada + hidup (Health > 0).
+-- Bila tidak ada korban -> Notify "Tidak ada pemain di dekatmu."
+-- Knockback: AssemblyLinearVelocity korban menjauhi penyerang
+-- (horizontal x30 + ke atas 12). Bila korban membawa Brainrot:
+-- Carried dikosongkan (visual carried dihancurkan), lalu jadi
+-- DroppedItems di posisi korban (tanah, y = 0) dengan
+-- ExpiresAt = now + 60 detik; korban dapat Notify jatuh.
+-- Penyerang dapat Notify "Kamu memukul <nama korban>!".
+local function onSlapRequest(player)
+	if not isLoadReady(player) then
+		notifyLoadNotReady(player)
+		return
+	end
+	local state = Players[player]
+	if not state then
+		return
+	end
+	local now = os.clock()
+	local last = LastSlapAt[player]
+	if last ~= nil and now - last < Config.SLAP_COOLDOWN then
+		Remotes.Notify:FireClient(player, "Tunggu sebentar.")
+		return
+	end
+	LastSlapAt[player] = now
+	local character = player.Character
+	local hrp = character and character:FindFirstChild("HumanoidRootPart")
+	if hrp == nil then
+		return
+	end
+	local victim = nil
+	local victimHrp = nil
+	local bestDist = Config.SLAP_RANGE
+	for other, _ in pairs(Players) do
+		if other ~= player then
+			local oChar = other.Character
+			local oHrp = oChar and oChar:FindFirstChild("HumanoidRootPart")
+			local oHum = oChar and oChar:FindFirstChildOfClass("Humanoid")
+			if oHrp ~= nil and oHum ~= nil and oHum.Health > 0 then
+				local d = (oHrp.Position - hrp.Position).Magnitude
+				if d <= bestDist then
+					bestDist = d
+					victim = other
+					victimHrp = oHrp
+				end
+			end
+		end
+	end
+	if victim == nil then
+		Remotes.Notify:FireClient(player, "Tidak ada pemain di dekatmu.")
+		return
+	end
+	local dir = victimHrp.Position - hrp.Position
+	dir = Vector3.new(dir.X, 0, dir.Z)
+	if dir.Magnitude < 0.01 then
+		dir = Vector3.new(0, 0, 1)
+	end
+	dir = dir.Unit
+	victimHrp.AssemblyLinearVelocity = dir * 30 + Vector3.new(0, 12, 0)
+	local vState = Players[victim]
+	if vState ~= nil and vState.Carried ~= nil then
+		local droppedKind = vState.Carried.Kind
+		vState.Carried = nil
+		destroyCarriedModel(victim)
+		local uid = newUid()
+		local dropPos = Vector3.new(victimHrp.Position.X, 0, victimHrp.Position.Z)
+		local item = { Uid = uid, Kind = droppedKind, Position = dropPos, ExpiresAt = now + DROPPED_LIFETIME }
+		DroppedItems[uid] = item
+		createDroppedModel(item)
+		Remotes.Notify:FireClient(victim, "Brainrot yang kamu bawa jatuh!")
+	end
+	Remotes.Notify:FireClient(player, "Kamu memukul " .. victim.DisplayName .. "!")
+end
+
+-- Handler PickupRequest (ambil Brainrot jatuh dari tanah): validasi
+-- berurutan — (a) load siap, (b) tangan kosong, (c) uid valid +
+-- item masih ada di DroppedItems, (d) jarak HumanoidRootPart ke
+-- posisi item <= 12 stud, (e) kind dikenal di Roster. Sukses: hapus
+-- item + hancurkan model tanahnya, isi Carried (UID baru), pasang
+-- visual carried, tandai Collected (ambil dari tanah = pernah
+-- memperoleh, sama seperti beli/klaim/curi), Notify "Kamu
+-- mendapatkan <DisplayName>!" — format SAMA seperti klaim peti,
+-- supaya pelacakan carried client (noteCarried) langsung jalan
+-- tanpa perubahan client.
+local function onPickupRequest(player, uid)
+	if not isLoadReady(player) then
+		notifyLoadNotReady(player)
+		return
+	end
+	local state = Players[player]
+	if not state then
+		return
+	end
+	if state.Carried ~= nil then
+		Remotes.Notify:FireClient(player, "Tanganmu sudah penuh.")
+		return
+	end
+	if type(uid) ~= "string" or uid == "" then
+		return
+	end
+	local item = DroppedItems[uid]
+	if item == nil then
+		Remotes.Notify:FireClient(player, "Brainrot itu sudah tidak ada.")
+		return
+	end
+	local character = player.Character
+	local hrp = character and character:FindFirstChild("HumanoidRootPart")
+	if hrp == nil then
+		Remotes.Notify:FireClient(player, "Terlalu jauh.")
+		return
+	end
+	if (hrp.Position - item.Position).Magnitude > 12 then
+		Remotes.Notify:FireClient(player, "Terlalu jauh.")
+		return
+	end
+	local entry = Config.Roster[item.Kind]
+	if entry == nil then
+		Remotes.Notify:FireClient(player, "Brainrot tidak dikenal.")
+		return
+	end
+	DroppedItems[uid] = nil
+	destroyDroppedModel(uid)
+	state.Carried = { Uid = newUid(), Kind = item.Kind }
+	refreshCarriedVisual(player)
+	markCollected(player, item.Kind)
+	Remotes.Notify:FireClient(player, "Kamu mendapatkan " .. entry.DisplayName .. "!")
 end
 
 -- ---------------------------------------------------------------------------
@@ -3449,6 +3643,7 @@ local function onPlayerRemoving(player)
 	end
 	destroyCarriedModel(player)
 	LockTeleportAt[player] = nil
+	LastSlapAt[player] = nil -- FIX ROUND 16: bersihkan cooldown pukul
 	releaseBase(player)
 	Players[player] = nil
 end
@@ -3494,6 +3689,8 @@ Remotes.StealRequest.OnServerEvent:Connect(onStealRequest)
 Remotes.LockRequest.OnServerEvent:Connect(onLockRequest)
 Remotes.ClaimRequest.OnServerEvent:Connect(onClaimRequest)
 Remotes.TakeRequest.OnServerEvent:Connect(onTakeRequest)
+Remotes.SlapRequest.OnServerEvent:Connect(onSlapRequest)
+Remotes.PickupRequest.OnServerEvent:Connect(onPickupRequest)
 Remotes.DebugFlood.OnServerEvent:Connect(onDebugFlood)
 
 -- Pemain yang sudah ada sebelum script jalan (misal Play Solo di Studio).
@@ -3512,6 +3709,7 @@ task.spawn(function()
 		lockExpiryTick()
 		floodTick()
 		crateExpiryTick()
+		droppedExpiryTick() -- FIX ROUND 16: item jatuh kedaluwarsa 60 detik
 	end
 end)
 

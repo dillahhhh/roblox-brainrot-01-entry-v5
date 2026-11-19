@@ -429,6 +429,11 @@ Config.SAVE_MAX_ATTEMPTS = 2
 Config.STEAL_COOLDOWN = 5
 Config.STEAL_ATTEMPT_COOLDOWN = 1
 Config.STEAL_RANGE = 12
+-- FIX ROUND 16 (20 Nov, perintah bos "tambahin mukul"): mekanik pukul
+-- (slap). SLAP_RANGE = jarak cari korban (pemain lain terdekat);
+-- SLAP_COOLDOWN = jeda antar pukulan per penyerang (server-side).
+Config.SLAP_RANGE = 6
+Config.SLAP_COOLDOWN = 1
 -- FIX ROUND 6 (20 Nov): CLAIM_RANGE 12 -> 20. Peti banjir susah
 -- dibuka: kotaknya kecil (3x2x3) di permukaan tanah dan prompt
 -- "Buka Peti" hanya muncul dalam 12 stud, jadi pemain harus
@@ -579,7 +584,15 @@ Config.CART_SIGN_PIXELS_PER_STUD = 100
 -- (y = 3.2).
 Config.EXHIBITION_TABLE_CENTER_X = 32
 Config.EXHIBITION_TABLE_CENTER_Z = 162
-Config.EXHIBITION_TABLE_TOP_SIZE = Vector3.new(44, 0.5, 44)
+-- FIX ROUND 16 (20 Nov, perintah bos: pameran cuma 7 Brainrot, meja
+-- dipotong): meja 44x44 (7 baris x 5 kolom, 35 model) -> 50x12
+-- (SATU baris 7 model, kolom 7 stud). Lebar 50 = rentang model
+-- 42 stud (6 x 7) + margin piringan; dalam 12 = satu baris +
+-- label tier di sisi selatan tiap model. Pusat tetap (32, 162).
+Config.EXHIBITION_TABLE_TOP_SIZE = Vector3.new(50, 0.5, 12)
+-- 7 jenis ASLI yang dipajang (satu per tier, urut harga): 28 jenis
+-- baru TIDAK dipajang. Index tetap 35 sel, roster tetap 35 jenis.
+Config.EXHIBITION_KINDS = { "AyamWortel", "BabiLabu", "AnjingBrokoli", "KucingCabai", "BeruangTerong", "HarimauTomat", "GajahKol" }
 Config.EXHIBITION_TABLE_TOP_Y = 2.75
 Config.EXHIBITION_TABLE_LEG_HEIGHT = 2.5
 Config.EXHIBITION_MODEL_SCALE = 2.0
