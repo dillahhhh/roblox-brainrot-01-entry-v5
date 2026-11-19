@@ -185,16 +185,26 @@ Config.SAFE_HALF_Z = 23
 -- sehingga yang tersisa hanya z = -150, 136, 149 per sisi.
 Config.TREE_CLEAR_HALF_Z = 40
 
--- Pencahayaan SENJA (FIX ROUND 7, 20 Nov, foto referensi
--- image-37/image-36.png): langit jingga-pink, cahaya hangat,
--- suasana SETERANG di foto (terang, kebaca, jangan terlalu gelap).
--- Dulu malam (ClockTime 20.5, Brightness 2.8, Ambient redup).
--- Lampu jalan + lampion TETAP nyala sebagai aksen; hutan di tepi
--- boleh lebih gelap (siluet) seperti gunung/pohon di foto.
-Config.LIGHT_CLOCK_TIME = 17.2
+-- Pencahayaan SENJA (FIX ROUND 8, 20 Nov): langit HARUS jingga-pink
+-- beneran, bukan biru siang. Round 7 gagal: ClockTime 17.2 di Roblox
+-- masih sore — langit default tetap biru. Perbaikan: ClockTime 18.1
+-- (matahari di ufuk, langit default Roblox sudah jingga di horizon)
+-- + Atmosphere senja (Haze + Color jingga dekat matahari, Decay pink
+-- menjauhi matahari, Glare) yang mewarnai kabut langit jadi
+-- jingga-pink seperti foto image-37.png. Density RENDAH (0.3, contoh
+-- docs max ~0.35) supaya hutan tepi tetap siluet, bukan kabut tebal.
+-- Scene TETAP TERANG: Brightness 3 + Ambient/OutdoorAmbient hangat-
+-- terang dipertahankan; lampu jalan + lampion tetap nyala.
+Config.LIGHT_CLOCK_TIME = 18.1
 Config.LIGHT_BRIGHTNESS = 3
 Config.LIGHT_AMBIENT = Color3.fromRGB(205, 165, 140)
 Config.LIGHT_OUTDOOR_AMBIENT = Color3.fromRGB(215, 155, 120)
+Config.LIGHT_ATMOSPHERE_DENSITY = 0.3
+Config.LIGHT_ATMOSPHERE_OFFSET = 0.25
+Config.LIGHT_ATMOSPHERE_COLOR = Color3.fromRGB(255, 165, 110)
+Config.LIGHT_ATMOSPHERE_DECAY = Color3.fromRGB(235, 120, 140)
+Config.LIGHT_ATMOSPHERE_GLARE = 0.6
+Config.LIGHT_ATMOSPHERE_HAZE = 2.5
 Config.LAMP_BRIGHTNESS = 2
 Config.LAMP_RANGE = 26
 
@@ -217,6 +227,42 @@ Config.CART_X_FROM_FRONT = 5
 Config.CART_Z_OFFSET = 20
 Config.CART_SIGN_TEXTS = { "JUAL CILOK", "JUAL BATAGOR", "JUAL BASO" }
 Config.CART_SIGN_TEXT_SIZE = 26
+-- Papan tulisan gerobak MENEMPEL (FIX ROUND 8, 20 Nov): papan fisik
+-- tipis di sisi depan counter (menghadap jalan/conveyor), BUKAN
+-- BillboardGui melayang di atas kanopi. Ukuran papan 0.15 (tebal) x
+-- 1.6 (tinggi) x 3.2 (lebar, sepanjang counter 3.5), tengah papan
+-- setinggi tengah counter (y = 1.1), menempel di muka counter
+-- (offset 2.25 setengah lebar counter + 0.075 setengah tebal papan).
+-- SurfaceGui PixelsPerStud 100 supaya "JUAL BATAGOR" (teks terpanjang)
+-- muat di papan 3.2 stud.
+Config.CART_SIGN_BOARD_THICKNESS = 0.15
+Config.CART_SIGN_BOARD_HEIGHT = 1.6
+Config.CART_SIGN_BOARD_WIDTH = 3.2
+Config.CART_SIGN_BOARD_Y = 1.1
+Config.CART_SIGN_PIXELS_PER_STUD = 100
+
+-- Meja pameran di sebelah spawn (FIX ROUND 8, 20 Nov): satu meja
+-- panjang di TIMUR spawn (pusat x = 32, z = 168 — sejajar spawn,
+-- 6 stud di timur tepi SpawnLocation x = 8), memajang KE-7 jenis
+-- Brainrot (RosterOrder) dalam 2 baris (depan 4, belakang 3).
+-- Dekorasi SAJA: model statis (anchored, createBrainrotModel yang
+-- sama — bentuk + aura + label identik), TANPA ProximityPrompt,
+-- TANPA RemoteEvent, TIDAK masuk ekonomi/conveyor/pedestal/peti.
+-- Meja TIDAK menutup jalur: jalan keluar spawn ke utara (x ~0,
+-- z 168 -> 127) bebas; pemain ke base jalan dulu ke utara (z < 161)
+-- baru belok timur/barat, meja di z 161.5..174.5 tidak dilewati.
+-- plaza y = 0.6; kaki meja 0.6..2.5, alas atas tengah y = 2.75
+-- (tebal 0.5) — permukaan pajang y = 3.0.
+Config.EXHIBITION_TABLE_CENTER_X = 32
+Config.EXHIBITION_TABLE_CENTER_Z = 168
+Config.EXHIBITION_TABLE_TOP_SIZE = Vector3.new(26, 0.5, 13)
+Config.EXHIBITION_TABLE_TOP_Y = 2.75
+Config.EXHIBITION_TABLE_LEG_HEIGHT = 1.9
+Config.EXHIBITION_MODEL_SCALE = 2.0
+Config.EXHIBITION_SPACING_X = 6
+Config.EXHIBITION_ROW_Z = 3.2
+Config.EXHIBITION_SIGN_TEXT = "PAMERAN BRAINROT"
+Config.EXHIBITION_SIGN_TEXT_SIZE = 28
 
 -- Kabel lampion (FIX ROUND 7, foto image-37.png): kabel tipis di
 -- atas tiap rentang lampion sisi jalan (y = LANTERN_CABLE_Y,

@@ -144,15 +144,36 @@ local function makePart(name, size, position, material, color)
 end
 
 local function setupLighting()
-	-- Senja jingga-pink SETERANG foto referensi (FIX ROUND 7):
-	-- ClockTime 17.2, Brightness + Ambient + OutdoorAmbient hangat
-	-- dan terang dari Config. Dulu malam (ClockTime 20.5).
-	-- Lampu jalan + lampion tetap nyala sebagai aksen.
+	-- Senja jingga-pink SETERANG foto referensi (FIX ROUND 8):
+	-- ClockTime 18.1 (matahari di ufuk) + Atmosphere senja dari
+	-- Config. Round 7 gagal karena ClockTime 17.2 masih sore dan
+	-- tanpa Atmosphere — langit default tetap biru. Atmosphere:
+	-- Haze mewarnai langit di atas horizon, Color jingga dekat
+	-- matahari, Decay pink menjauhi matahari, Glare halo matahari.
+	-- Density rendah (0.3) supaya hutan tepi tetap siluet.
+	-- Brightness 3 + Ambient/OutdoorAmbient hangat-terang
+	-- dipertahankan — scene tetap terang, lampu jalan + lampion
+	-- tetap nyala sebagai aksen.
 	Lighting.ClockTime = Config.LIGHT_CLOCK_TIME
 	Lighting.Brightness = Config.LIGHT_BRIGHTNESS
 	Lighting.Ambient = Config.LIGHT_AMBIENT
 	Lighting.OutdoorAmbient = Config.LIGHT_OUTDOOR_AMBIENT
 	Lighting.EnvironmentDiffuseScale = 0.6
+	-- Atmosphere sudah ada di default.project.json (tampilan Edit
+	-- Studio); di sini diselaraskan dari Config, atau dibuat bila
+	-- belum ada (misal place dibuka tanpa project).
+	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
+	if atmosphere == nil then
+		atmosphere = Instance.new("Atmosphere")
+		atmosphere.Name = "SunsetAtmosphere"
+		atmosphere.Parent = Lighting
+	end
+	atmosphere.Density = Config.LIGHT_ATMOSPHERE_DENSITY
+	atmosphere.Offset = Config.LIGHT_ATMOSPHERE_OFFSET
+	atmosphere.Color = Config.LIGHT_ATMOSPHERE_COLOR
+	atmosphere.Decay = Config.LIGHT_ATMOSPHERE_DECAY
+	atmosphere.Glare = Config.LIGHT_ATMOSPHERE_GLARE
+	atmosphere.Haze = Config.LIGHT_ATMOSPHERE_HAZE
 end
 
 local function buildTerrain()
@@ -1093,7 +1114,6 @@ local function buildVendorCarts()
 			Color3.fromRGB(200, 60, 60),
 			Color3.fromRGB(240, 220, 180),
 		}
-		local canopyParts = {}
 		for stripe = 1, 2 do
 			local stripePart = makePart(
 				"VendorCartCanopy" .. baseIdx,
@@ -1103,7 +1123,6 @@ local function buildVendorCarts()
 				canopyColors[stripe]
 			)
 			stripePart.CanCollide = false
-			canopyParts[stripe] = stripePart
 		end
 		-- 2 roda di sisi gerobak (sumbu sepanjang Z).
 		for _, wheelZ in ipairs({ -1.9, 1.9 }) do
@@ -1164,25 +1183,146 @@ local function buildVendorCarts()
 		vendorPart("VendorApron" .. baseIdx, Vector3.new(0.15, 1.4, 1.2),
 			Vector3.new(vendorX + inward * 0.55, 1.9, vendorZ),
 			Color3.fromRGB(245, 245, 240))
-		-- TULISAN jualan di atas kanopi (BillboardGui, terbaca dari jalan).
-		local sign = Instance.new("BillboardGui")
-		sign.Name = "VendorCartSign" .. baseIdx
-		sign.Size = UDim2.fromOffset(220, 56)
-		sign.StudsOffsetWorldSpace = Vector3.new(0, 1.0, 0)
-		sign.AlwaysOnTop = false
-		sign.LightInfluence = 0
-		sign.Parent = canopyParts[1]
+		-- TULISAN jualan MENEMPEL di badan gerobak (FIX ROUND 8):
+		-- papan fisik tipis di muka counter menghadap jalan
+		-- (sisi conveyor, tempat NPC penjual berdiri), BUKAN
+		-- BillboardGui melayang di atas kanopi. Papan menempel
+		-- fisik: muka counter di cartX + inward * 2.25 (setengah
+		-- lebar counter 4.5), papan 0.15 tebal -> pusat papan di
+		-- +2.325 dari cartX, tanpa celah mengambang. Papan merah
+		-- (warna latar tulisan lama) + SurfaceGui teks putih.
+		local signBoard = makePart(
+			"VendorCartSign" .. baseIdx,
+			Vector3.new(
+				Config.CART_SIGN_BOARD_THICKNESS,
+				Config.CART_SIGN_BOARD_HEIGHT,
+				Config.CART_SIGN_BOARD_WIDTH
+			),
+			Vector3.new(
+				cartX + inward * (2.25 + Config.CART_SIGN_BOARD_THICKNESS / 2),
+				Config.CART_SIGN_BOARD_Y,
+				cartZ
+			),
+			Enum.Material.Wood,
+			Color3.fromRGB(150, 30, 30)
+		)
+		signBoard.CanCollide = false
+		local signGui = Instance.new("SurfaceGui")
+		signGui.Name = "VendorCartSignGui"
+		signGui.Face = (inward == 1) and Enum.NormalId.Right or Enum.NormalId.Left
+		signGui.PixelsPerStud = Config.CART_SIGN_PIXELS_PER_STUD
+		signGui.LightInfluence = 0
+		signGui.Parent = signBoard
 		local signTextLabel = Instance.new("TextLabel")
 		signTextLabel.Name = "SignText"
 		signTextLabel.Size = UDim2.new(1, 0, 1, 0)
-		signTextLabel.BackgroundColor3 = Color3.fromRGB(150, 30, 30)
-		signTextLabel.BackgroundTransparency = 0.15
+		signTextLabel.BackgroundTransparency = 1
 		signTextLabel.Text = signText
 		signTextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 		signTextLabel.TextScaled = false
 		signTextLabel.TextSize = Config.CART_SIGN_TEXT_SIZE
 		signTextLabel.Font = Enum.Font.GothamBold
-		signTextLabel.Parent = sign
+		signTextLabel.Parent = signGui
+	end
+end
+
+-- Meja pameran di sebelah spawn (FIX ROUND 8, 20 Nov): satu meja
+-- panjang di TIMUR spawn (pusat x = 32, z = 168 — sejajar spawn,
+-- 11 stud di timur tepi SpawnLocation x = 8), memajang KE-7 jenis
+-- Brainrot (Config.RosterOrder) dalam 2 baris (depan 4, belakang
+-- 3) di atas alas meja. Model dari createBrainrotModel yang sama
+-- — bentuk + aura rarity + label nama identik dengan yang di
+-- conveyor/pedestal. DEKORASI SAJA: model statis (Anchored, dari
+-- createBrainrotModel), TANPA ProximityPrompt, TANPA RemoteEvent,
+-- TIDAK masuk ekonomi/conveyor/pedestal/peti, tidak bisa diambil
+-- atau dijual. Meja di samping spawn: jalan keluar spawn ke utara
+-- (x ~0) dan ke base (belok setelah z < 161) tetap lega.
+local function buildExhibitionTable()
+	local centerX = Config.EXHIBITION_TABLE_CENTER_X
+	local centerZ = Config.EXHIBITION_TABLE_CENTER_Z
+	local topSize = Config.EXHIBITION_TABLE_TOP_SIZE
+	local topY = Config.EXHIBITION_TABLE_TOP_Y
+	-- Alas atas meja (permukaan pajang y = topY + 0.25 = 3.0).
+	local top = makePart(
+		"ExhibitionTableTop",
+		topSize,
+		Vector3.new(centerX, topY, centerZ),
+		Enum.Material.Wood,
+		Color3.fromRGB(170, 120, 70)
+	)
+	top.CanCollide = true
+	-- 4 kaki di sudut meja (dari permukaan plaza y = 0.6 sampai
+	-- bawah alas y = topY - 0.25 = 2.5).
+	local legHeight = Config.EXHIBITION_TABLE_LEG_HEIGHT
+	local legY = 0.6 + legHeight / 2
+	for _, legX in ipairs({ -1, 1 }) do
+		for _, legZ in ipairs({ -1, 1 }) do
+			makePart(
+				"ExhibitionTableLeg",
+				Vector3.new(0.8, legHeight, 0.8),
+				Vector3.new(
+					centerX + legX * (topSize.X / 2 - 0.8),
+					legY,
+					centerZ + legZ * (topSize.Z / 2 - 0.8)
+				),
+				Enum.Material.Wood,
+				Color3.fromRGB(110, 70, 40)
+			)
+		end
+	end
+	-- Papan nama meja di ujung BARAT (menghadap spawn): papan
+	-- menempel di ujung alas, sisi atas papan rata dengan bawah
+	-- alas (y = 2.5). Pemain baru spawn langsung melihat tulisan.
+	local signBoard = makePart(
+		"ExhibitionTableSign",
+		Vector3.new(0.15, 1.4, 10),
+		Vector3.new(centerX - topSize.X / 2 - 0.075, 1.8, centerZ),
+		Enum.Material.Wood,
+		Color3.fromRGB(150, 30, 30)
+	)
+	signBoard.CanCollide = false
+	local signGui = Instance.new("SurfaceGui")
+	signGui.Name = "ExhibitionTableSignGui"
+	signGui.Face = Enum.NormalId.Left
+	signGui.PixelsPerStud = 50
+	signGui.LightInfluence = 0
+	signGui.Parent = signBoard
+	local signText = Instance.new("TextLabel")
+	signText.Name = "SignText"
+	signText.Size = UDim2.new(1, 0, 1, 0)
+	signText.BackgroundTransparency = 1
+	signText.Text = Config.EXHIBITION_SIGN_TEXT
+	signText.TextColor3 = Color3.fromRGB(255, 255, 255)
+	signText.TextScaled = false
+	signText.TextSize = Config.EXHIBITION_SIGN_TEXT_SIZE
+	signText.Font = Enum.Font.GothamBold
+	signText.Parent = signGui
+	-- 7 Brainrot pajangan: baris depan (z - ROW_Z) 4 jenis pertama,
+	-- baris belakang (z + ROW_Z) 3 jenis terakhir. Origin model di
+	-- kaki -> PivotTo di permukaan alas (y = 3.0). Model menghadap
+	-- barat (-X, ke arah spawn). Tanpa prompt, tanpa remote.
+	local surfaceY = topY + topSize.Y / 2
+	local spacingX = Config.EXHIBITION_SPACING_X
+	local rowZ = Config.EXHIBITION_ROW_Z
+	local frontX = { -1.5, -0.5, 0.5, 1.5 }
+	local backX = { -1, 0, 1 }
+	for i, kind in ipairs(Config.RosterOrder) do
+		local model = createBrainrotModel(kind, Config.EXHIBITION_MODEL_SCALE)
+		if model then
+			local xOffset
+			local zOffset
+			if i <= 4 then
+				xOffset = frontX[i] * spacingX
+				zOffset = -rowZ
+			else
+				xOffset = backX[i - 4] * spacingX
+				zOffset = rowZ
+			end
+			model.Name = "ExhibitionBrainrot_" .. kind
+			model.Parent = Workspace
+			model:PivotTo(CFrame.new(centerX + xOffset, surfaceY, centerZ + zOffset)
+				* CFrame.Angles(0, math.rad(-90), 0))
+		end
 	end
 end
 
@@ -1239,6 +1379,7 @@ local function buildWorld()
 	buildLanterns()
 	buildStalls()
 	buildVendorCarts()
+	buildExhibitionTable()
 end
 
 -- ---------------------------------------------------------------------------
