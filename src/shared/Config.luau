@@ -32,7 +32,7 @@ Config.Roster = {
 		Price = 40,
 		Income = 4,
 		Sell = 20,
-		Color = Color3.fromRGB(0, 200, 230),
+		Color = Color3.fromRGB(245, 245, 245),
 		RollMax = 60,
 	},
 	AyamWortel = {
@@ -41,7 +41,7 @@ Config.Roster = {
 		Price = 50,
 		Income = 5,
 		Sell = 25,
-		Color = Color3.fromRGB(0, 200, 230),
+		Color = Color3.fromRGB(245, 245, 245),
 		RollMax = 120,
 	},
 	KambingSawi = {
@@ -50,7 +50,7 @@ Config.Roster = {
 		Price = 60,
 		Income = 6,
 		Sell = 30,
-		Color = Color3.fromRGB(0, 200, 230),
+		Color = Color3.fromRGB(245, 245, 245),
 		RollMax = 180,
 	},
 	KelinciSeledri = {
@@ -59,7 +59,7 @@ Config.Roster = {
 		Price = 80,
 		Income = 8,
 		Sell = 40,
-		Color = Color3.fromRGB(0, 200, 230),
+		Color = Color3.fromRGB(245, 245, 245),
 		RollMax = 240,
 	},
 	ItikJagung = {
@@ -68,7 +68,7 @@ Config.Roster = {
 		Price = 90,
 		Income = 9,
 		Sell = 45,
-		Color = Color3.fromRGB(0, 200, 230),
+		Color = Color3.fromRGB(245, 245, 245),
 		RollMax = 300,
 	},
 	-- Uncommon (total 25%): 5 x 5% — RollMax 350/400/450/500/550.

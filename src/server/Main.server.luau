@@ -810,7 +810,18 @@ local function buildTrees()
 			end
 			-- (Tanpa `continue`: file ini harus lolos `luac -p` Lua 5.1,
 			-- jadi pembuatan pohon dibungkus `if not inFrontOfBase`.)
-			if not inFrontOfBase then
+			-- FIX ROUND 13 (20 Nov — perintah bos: pohon di pameran
+			-- menembus Brainrot): pohon di x = 20, z = 136 / 149 JUGA
+			-- dilewati. Meja pameran 44x44 di timur spawn (x 10-54,
+			-- z 140-184): pohon (20, 149) berdiri TEPAT DI ATAS meja —
+			-- batangnya menembus alas meja dan bola daunnya (y 3.5-8.5)
+			-- menelan model pameran kolom 1 baris 2 (x 18, z 150);
+			-- pohon (20, 136) berdiri 4 stud di utara tepi meja,
+			-- di dalam margin 6 stud. Sisi x = -20 (30 stud di barat
+			-- meja) dan (20, -150) tidak mengganggu pameran.
+			local inExhibitionZone = (treeX == 20
+				and (treeZ == 136 or treeZ == 149))
+			if not inFrontOfBase and not inExhibitionZone then
 				-- Variasi warna daun deterministik (3 hijau, by index).
 				local thisLeafColor = leafColors[((i + side) % #leafColors) + 1]
 				local trunk = makePart(
@@ -1396,7 +1407,7 @@ local function buildExhibitionTable()
 			local rowZ = centerZ + (row - (rows - 1) / 2) * rowSpacing
 			local labelPlate = makePart(
 				"ExhibitionRowLabel",
-				Vector3.new(3.5, 0.1, 4),
+				Vector3.new(4.5, 0.1, 5),
 				Vector3.new(centerX - topSize.X / 2 + 2.25, surfaceY + 0.05, rowZ),
 				Enum.Material.SmoothPlastic,
 				Color3.fromRGB(30, 30, 35)
@@ -1415,7 +1426,15 @@ local function buildExhibitionTable()
 			labelText.Text = firstEntry.Rarity
 			labelText.TextColor3 = firstEntry.Color
 			labelText.TextScaled = false
-			labelText.TextSize = 20
+			-- FIX ROUND 13 (20 Nov — perintah bos: tulisan rarity di
+			-- pameran digedein): TextSize 20 -> 40 (2x) supaya terbaca
+			-- jelas dari arah spawn; pelat ikut diperbesar 3.5x4 ->
+			-- 4.5x5 agar "Ultra Rare"/"Legendary" tetap muat satu
+			-- baris (wrap bila mepet tetap muat 2 baris). Pelat x
+			-- 10-14.5 (1 stud dari piringan kolom pertama x 15.5),
+			-- antar-pelat 1 stud (baris berjarak 6) — tidak menutupi
+			-- Brainrot dan tidak bertabrakan antar-baris.
+			labelText.TextSize = 40
 			labelText.TextWrapped = true
 			labelText.Font = Enum.Font.GothamBold
 			labelText.Parent = labelGui
