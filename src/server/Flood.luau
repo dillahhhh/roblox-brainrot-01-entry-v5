@@ -264,13 +264,14 @@ function Flood.spawnCrates(players, crates, washed, newUid)
 	end
 
 	-- Jaminan minimal 3 peti PER SIKLUS INI (bukan dari isi Crates).
-	-- Wakil Brainrot tiap kelas fallback: Pasar -> AyamIkan
-	-- (Common), Pedagang -> AnjingEsTeh (Rare), Tumpah ->
-	-- BeruangDurian (Legendary).
+	-- Wakil Brainrot tiap kelas fallback: Pasar -> AyamWortel
+	-- (Common), Pedagang -> AnjingBrokoli (Rare), Tumpah ->
+	-- BeruangTerong (Legendary). FIX ROUND 7: key roster baru
+	-- (dulu AyamIkan / AnjingEsTeh / BeruangDurian).
 	local fallbacks = {
-		{ BrainrotKind = "AyamIkan", Rarity = "Common", Class = "Pasar" },
-		{ BrainrotKind = "AnjingEsTeh", Rarity = "Rare", Class = "Pedagang" },
-		{ BrainrotKind = "BeruangDurian", Rarity = "Legendary", Class = "Tumpah" },
+		{ BrainrotKind = "AyamWortel", Rarity = "Common", Class = "Pasar" },
+		{ BrainrotKind = "AnjingBrokoli", Rarity = "Rare", Class = "Pedagang" },
+		{ BrainrotKind = "BeruangTerong", Rarity = "Legendary", Class = "Tumpah" },
 	}
 	local rounds = 0
 	while created < 3 and rounds < 3 do

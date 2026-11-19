@@ -14,6 +14,67 @@ local DataStore = {}
 local DATA_KEY_PREFIX = "Player_"
 
 -- ---------------------------------------------------------------------------
+-- Pemetaan key roster lama -> baru (FIX ROUND 7, 20 Nov): roster jadi
+-- hibrida binatang + sayuran, key berubah (AyamIkan -> AyamWortel,
+-- dst). Load HARUS toleran terhadap key lama: map ke baru. Key yang
+-- tidak dikenal (bukan key lama, bukan key baru) DILEWATI dengan aman
+-- — slot itu jadi kosong + warn log — JANGAN sampai satu key tak
+-- dikenal membuat seluruh load "corrupt" atau crash (DESIGN.md 17.3:
+-- satu field rusak -> corrupt, dikecualikan di sini KHUSUS untuk
+-- Kind yang tidak dikenal, karena roster berganti nama).
+-- ---------------------------------------------------------------------------
+
+local LEGACY_KIND_MAP = {
+	AyamIkan = "AyamWortel",
+	BabiTerbang = "BabiLabu",
+	AnjingEsTeh = "AnjingBrokoli",
+	KucingRendang = "KucingCabai",
+	BeruangDurian = "BeruangTerong",
+	HarimauApi = "HarimauTomat",
+	GajahGamelan = "GajahKol",
+}
+
+-- Petakan key lama ke baru di Slots + Carried; hapus item yang
+-- Kind-nya tidak dikenal (slot jadi kosong). Mengembalikan jumlah
+-- item yang dihapus karena Kind tidak dikenal. Idempotent: key baru
+-- tidak ada di LEGACY_KIND_MAP, jadi pemanggilan kedua tidak
+-- mengubah apa pun.
+local function remapKinds(data)
+	local dropped = 0
+	local slots = data.Slots
+	if type(slots) == "table" then
+		for i = 1, Config.SLOT_COUNT do
+			local key = tostring(i)
+			local item = slots[key]
+			if type(item) == "table" and type(item.Kind) == "string" then
+				local mapped = LEGACY_KIND_MAP[item.Kind]
+				if mapped ~= nil then
+					item.Kind = mapped
+				elseif Config.Roster[item.Kind] == nil then
+					warn("[DataStore] remapKinds: Kind tidak dikenal di Slots["
+						.. key .. "] (" .. item.Kind .. ") — slot dikosongkan")
+					slots[key] = nil
+					dropped = dropped + 1
+				end
+			end
+		end
+	end
+	local carried = data.Carried
+	if type(carried) == "table" and type(carried.Kind) == "string" then
+		local mapped = LEGACY_KIND_MAP[carried.Kind]
+		if mapped ~= nil then
+			carried.Kind = mapped
+		elseif Config.Roster[carried.Kind] == nil then
+			warn("[DataStore] remapKinds: Kind tidak dikenal di Carried ("
+				.. carried.Kind .. ") — carried dikosongkan")
+			data.Carried = nil
+			dropped = dropped + 1
+		end
+	end
+	return dropped
+end
+
+-- ---------------------------------------------------------------------------
 -- Validasi struktur (DESIGN.md 17.3). Satu gagal -> "corrupt".
 -- Field tambahan yang tidak dikenal diabaikan (forward-compatible).
 -- ---------------------------------------------------------------------------
@@ -110,6 +171,10 @@ function DataStore.migrate(data)
 	if out.Revision == nil then
 		out.Revision = 0
 	end
+	-- FIX ROUND 7: petakan key roster lama ke baru (lihat
+	-- LEGACY_KIND_MAP di atas) — data legacy Version 0 yang
+	-- menyimpan key lama ikut termigrasi ke key baru.
+	remapKinds(out)
 	out.Version = Config.DATA_VERSION
 	return out
 end
@@ -171,6 +236,12 @@ function DataStore.loadData(player)
 		-- Legacy yang sah: migrasi 0 -> 1, lalu validasi hasil migrasi.
 		data = DataStore.migrate(data)
 	end
+	-- FIX ROUND 7: remap key roster lama -> baru + lewati Kind tak
+	-- dikenal (slot dikosongkan, warn) SEBELUM validasi — supaya
+	-- data Version 1 yang masih menyimpan key lama (disimpan build
+	-- v5) tetap bisa di-load, dan satu Kind tak dikenal tidak
+	-- membuat seluruh load "corrupt".
+	remapKinds(data)
 	local valid, reason = validateData(data)
 	if not valid then
 		warn("[DataStore] loadData: data corrupt untuk " .. player.Name .. ": " .. tostring(reason))

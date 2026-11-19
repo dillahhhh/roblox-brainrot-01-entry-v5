@@ -144,9 +144,11 @@ local function makePart(name, size, position, material, color)
 end
 
 local function setupLighting()
-	-- Pasar malam yang terang di luar base (FIX ROUND 3): Brightness
-	-- + Ambient + OutdoorAmbient naik dari Config, ClockTime tetap 20.5.
-	Lighting.ClockTime = 20.5
+	-- Senja jingga-pink SETERANG foto referensi (FIX ROUND 7):
+	-- ClockTime 17.2, Brightness + Ambient + OutdoorAmbient hangat
+	-- dan terang dari Config. Dulu malam (ClockTime 20.5).
+	-- Lampu jalan + lampion tetap nyala sebagai aksen.
+	Lighting.ClockTime = Config.LIGHT_CLOCK_TIME
 	Lighting.Brightness = Config.LIGHT_BRIGHTNESS
 	Lighting.Ambient = Config.LIGHT_AMBIENT
 	Lighting.OutdoorAmbient = Config.LIGHT_OUTDOOR_AMBIENT
@@ -880,6 +882,76 @@ local function buildLanterns()
 			end
 		end
 	end
+	-- Kabel lampion (FIX ROUND 7, foto image-37.png): lampion di
+	-- atas digantung di KABEL, bukan melayang. (a) Kabel tipis di
+	-- atas tiap rentang lampion sisi jalan (y =
+	-- Config.LANTERN_CABLE_Y, sedikit di atas lampion tertinggi
+	-- 7.25). (b) Kabel MELINTANG di atas conveyor antar tiang lampu
+	-- (x = -18..18) di tengah tiap gap, y = Config.CROSS_CABLE_Y
+	-- (9.5 — di atas Brainrot conveyor tertinggi ~7.45 + di luar
+	-- jalur label), dengan tiang tinggi sendiri + 3 lampion gantung
+	-- kecil bertali pendek. Deterministik (aritmetika, tanpa
+	-- math.random). Lampu jalan + 60 lampion yang sudah ada tetap.
+	local cableColor = Color3.fromRGB(40, 30, 25)
+	for side = 1, 2 do
+		local lampX = (side == 1) and -18 or 18
+		for gap = 1, 6 do
+			local zA = -140 + (gap - 1) * 46
+			local cable = Instance.new("Part")
+			cable.Name = "LanternCable"
+			cable.Size = Vector3.new(0.15, 0.15, 46)
+			cable.Position = Vector3.new(lampX, Config.LANTERN_CABLE_Y, zA + 23)
+			cable.Material = Enum.Material.SmoothPlastic
+			cable.Color = cableColor
+			cable.Anchored = true
+			cable.CanCollide = false
+			cable.Parent = Workspace
+		end
+	end
+	for gap = 1, 6 do
+		local cableZ = -117 + (gap - 1) * 46 -- tengah tiap gap tiang lampu
+		for _, side in ipairs({ -1, 1 }) do
+			local post = makePart(
+				"CrossCablePost",
+				Vector3.new(0.5, Config.CROSS_CABLE_Y, 0.5),
+				Vector3.new(side * 18, Config.CROSS_CABLE_Y / 2, cableZ),
+				Enum.Material.Metal,
+				Color3.fromRGB(40, 40, 45)
+			)
+			post.CanCollide = false
+		end
+		local cross = Instance.new("Part")
+		cross.Name = "CrossCable"
+		cross.Size = Vector3.new(36, 0.15, 0.15)
+		cross.Position = Vector3.new(0, Config.CROSS_CABLE_Y, cableZ)
+		cross.Material = Enum.Material.SmoothPlastic
+		cross.Color = cableColor
+		cross.Anchored = true
+		cross.CanCollide = false
+		cross.Parent = Workspace
+		for k = 1, 3 do
+			local hangX = -12 + (k - 1) * 12
+			local cord = Instance.new("Part")
+			cord.Name = "HangingLanternCord"
+			cord.Size = Vector3.new(0.08, 0.7, 0.08)
+			cord.Position = Vector3.new(hangX, Config.CROSS_CABLE_Y - 0.35, cableZ)
+			cord.Material = Enum.Material.SmoothPlastic
+			cord.Color = cableColor
+			cord.Anchored = true
+			cord.CanCollide = false
+			cord.Parent = Workspace
+			local hanging = Instance.new("Part")
+			hanging.Name = "HangingLantern"
+			hanging.Shape = Enum.PartType.Ball
+			hanging.Size = Vector3.new(0.7, 0.7, 0.7)
+			hanging.Position = Vector3.new(hangX, Config.CROSS_CABLE_Y - 0.9, cableZ)
+			hanging.Material = Enum.Material.Neon
+			hanging.Color = lanternColors[((k + gap) % #lanternColors) + 1]
+			hanging.Anchored = true
+			hanging.CanCollide = false
+			hanging.Parent = Workspace
+		end
+	end
 end
 
 -- Kios pasar di ujung utara/selatan map (x = ±35, z = ±188): jauh dari
@@ -922,6 +994,195 @@ local function buildStalls()
 				stripePart.CanCollide = false
 			end
 		end
+	end
+end
+
+-- Gerobak jualan depan base (FIX ROUND 7, 20 Nov, foto image-37.png):
+-- satu gerobak BESAR di depan tiap base (8 base = 8 gerobak), di
+-- samping jalan masuk, DI LUAR jalur conveyor (x = ±7.5) dan jalur
+-- gerak Brainrot, TIDAK menutup pintu base dan TIDAK bersinggungan
+-- dengan jalur conveyor maupun lintasan Brainrot. Verifikasi posisi
+-- (contoh base kiri xCenter = -68, inward = +1, frontX = -41):
+-- gerobak di x = -36 (lebar x 4.5 -> -38.25..-33.75), z = zCenter
+-- ± 20 (dalam 3.5 -> 18.25..21.75 dari tengah base). Bandingkan:
+-- jalur conveyor x = ±7.5 (jauh 26 stud); lintasan Brainrot x =
+-- ±7.5 ± 2.1 (lebar model); pintu base di zCenter (gerobak 20 stud
+-- ke samping, jalan masuk zCenter ± 3.5 bebas); teras base z ± 15
+-- (gerobak mulai 18.25); kaca lock depan x = -40 (gerobak mulai
+-- -38.25, di LUAR kotak kaca); pohon x = ±20, lampu x = ±18
+-- (gerobak di x -38..-34, tidak bersentuhan); peti Pasar spawn di
+-- pintu (x -38, z zCenter ± 4 — gerobak di z ± 18..22, tidak
+-- menutupi peti). Sisi z berselang-seling (ganjil +20, genap -20).
+-- Tiap gerobak: NPC PENJUAL (karakter Roblox sederhana, dekorasi)
+-- + TULISAN jualan bergiliran 1-2-3-1-2-3-1-2 untuk base 1..8.
+-- Gerobak + penjual + tulisan = dekorasi SAJA (tidak ada interaksi
+-- jual-beli, tidak ada remote baru, tidak ada ekonomi baru).
+-- DALAM base JANGAN ada jualan (base tetap hanya pajang Brainrot
+-- 6 pedestal + rumah). Posisi + tulisan lewat konstanta Config.
+local function buildVendorCarts()
+	local signTexts = Config.CART_SIGN_TEXTS
+	local goodsColors = {
+		Color3.fromRGB(240, 230, 210), -- CILOK: putih kekuningan
+		Color3.fromRGB(180, 120, 60), -- BATAGOR: cokelat keemasan
+		Color3.fromRGB(245, 240, 225), -- BASO: putih pucat
+	}
+	local shirtColors = {
+		Color3.fromRGB(60, 120, 200),
+		Color3.fromRGB(200, 120, 60),
+		Color3.fromRGB(80, 160, 80),
+		Color3.fromRGB(180, 80, 140),
+	}
+	for baseIdx = 1, Config.BASE_COUNT do
+		local side = (baseIdx <= 4) and 1 or 2
+		local row = ((baseIdx - 1) % 4) + 1
+		local xCenter = Config.BASE_X[side]
+		local zCenter = Config.BASE_Z[row]
+		local inward = (xCenter < 0) and 1 or -1 -- arah base -> conveyor
+		local frontX = xCenter + inward * 27 -- tepi depan base
+		local cartX = frontX + inward * Config.CART_X_FROM_FRONT
+		local zSide = (baseIdx % 2 == 1) and 1 or -1
+		local cartZ = zCenter + zSide * Config.CART_Z_OFFSET
+		local signIndex = ((baseIdx - 1) % #signTexts) + 1
+		local signText = signTexts[signIndex]
+		local goodsColor = goodsColors[signIndex]
+
+		-- Meja gerobak + alas atas (counter 4.5 x 2.2 x 3.5, alas 5 x 4).
+		local counter = makePart(
+			"VendorCartCounter" .. baseIdx,
+			Vector3.new(4.5, 2.2, 3.5),
+			Vector3.new(cartX, 1.1, cartZ),
+			Enum.Material.Wood,
+			Color3.fromRGB(140, 95, 55)
+		)
+		counter.CanCollide = true
+		local counterTop = makePart(
+			"VendorCartTop" .. baseIdx,
+			Vector3.new(5, 0.3, 4),
+			Vector3.new(cartX, 2.35, cartZ),
+			Enum.Material.Wood,
+			Color3.fromRGB(170, 120, 70)
+		)
+		counterTop.CanCollide = false
+		-- Dagangan di atas meja: 4 bulatan sesuai tulisan jualan.
+		for _, dz in ipairs({ -1.2, -0.4, 0.4, 1.2 }) do
+			local goods = Instance.new("Part")
+			goods.Name = "VendorCartGoods" .. baseIdx
+			goods.Shape = Enum.PartType.Ball
+			goods.Size = Vector3.new(0.6, 0.6, 0.6)
+			goods.Position = Vector3.new(cartX, 2.8, cartZ + dz)
+			goods.Material = Enum.Material.SmoothPlastic
+			goods.Color = goodsColor
+			goods.Anchored = true
+			goods.CanCollide = false
+			goods.Parent = Workspace
+		end
+		-- 4 tiang + kanopi 2 garis (merah/krem, seperti kios pasar).
+		for _, postX in ipairs({ -2.2, 2.2 }) do
+			for _, postZ in ipairs({ -1.6, 1.6 }) do
+				local post = makePart(
+					"VendorCartPost" .. baseIdx,
+					Vector3.new(0.35, 2.6, 0.35),
+					Vector3.new(cartX + postX, 3.8, cartZ + postZ),
+					Enum.Material.Wood,
+					Color3.fromRGB(110, 70, 40)
+				)
+				post.CanCollide = false
+			end
+		end
+		local canopyColors = {
+			Color3.fromRGB(200, 60, 60),
+			Color3.fromRGB(240, 220, 180),
+		}
+		local canopyParts = {}
+		for stripe = 1, 2 do
+			local stripePart = makePart(
+				"VendorCartCanopy" .. baseIdx,
+				Vector3.new(5.5, 0.25, 2.4),
+				Vector3.new(cartX, 5.2, cartZ - 1.2 + (stripe - 1) * 2.4),
+				Enum.Material.SmoothPlastic,
+				canopyColors[stripe]
+			)
+			stripePart.CanCollide = false
+			canopyParts[stripe] = stripePart
+		end
+		-- 2 roda di sisi gerobak (sumbu sepanjang Z).
+		for _, wheelZ in ipairs({ -1.9, 1.9 }) do
+			local wheel = Instance.new("Part")
+			wheel.Name = "VendorCartWheel" .. baseIdx
+			wheel.Shape = Enum.PartType.Cylinder
+			wheel.Size = Vector3.new(0.4, 1.4, 1.4)
+			wheel.CFrame = CFrame.new(cartX, 0.7, cartZ + wheelZ)
+				* CFrame.Angles(0, math.rad(90), 0)
+			wheel.Material = Enum.Material.Wood
+			wheel.Color = Color3.fromRGB(60, 40, 25)
+			wheel.Anchored = true
+			wheel.CanCollide = false
+			wheel.Parent = Workspace
+		end
+		-- NPC PENJUAL: karakter Roblox sederhana di sisi jalan
+		-- gerobak (antara gerobak dan conveyor), menghadap jalan.
+		-- Dekorasi: semua part CanCollide false, tidak menghalangi.
+		local vendorX = cartX + inward * 2.8
+		local vendorZ = cartZ
+		local shirtColor = shirtColors[((baseIdx - 1) % #shirtColors) + 1]
+		local skinColor = Color3.fromRGB(240, 200, 160)
+		local function vendorPart(name, size, position, color, shape, cframe)
+			local part = Instance.new("Part")
+			part.Name = name
+			part.Size = size
+			if shape ~= nil then
+				part.Shape = shape
+			end
+			if cframe ~= nil then
+				part.CFrame = cframe
+			else
+				part.Position = position
+			end
+			part.Material = Enum.Material.SmoothPlastic
+			part.Color = color
+			part.Anchored = true
+			part.CanCollide = false
+			part.Parent = Workspace
+			return part
+		end
+		vendorPart("VendorLegL" .. baseIdx, Vector3.new(0.5, 1.0, 0.5),
+			Vector3.new(vendorX, 0.5, vendorZ - 0.35), Color3.fromRGB(50, 50, 70))
+		vendorPart("VendorLegR" .. baseIdx, Vector3.new(0.5, 1.0, 0.5),
+			Vector3.new(vendorX, 0.5, vendorZ + 0.35), Color3.fromRGB(50, 50, 70))
+		vendorPart("VendorTorso" .. baseIdx, Vector3.new(1.6, 1.8, 0.9),
+			Vector3.new(vendorX, 1.9, vendorZ), shirtColor)
+		vendorPart("VendorArmL" .. baseIdx, Vector3.new(0.4, 1.4, 0.4),
+			Vector3.new(vendorX, 1.9, vendorZ - 0.65), skinColor)
+		vendorPart("VendorArmR" .. baseIdx, Vector3.new(0.4, 1.4, 0.4),
+			Vector3.new(vendorX, 1.9, vendorZ + 0.65), skinColor)
+		vendorPart("VendorHead" .. baseIdx, Vector3.new(1.1, 1.1, 1.1),
+			Vector3.new(vendorX, 3.35, vendorZ), skinColor, Enum.PartType.Ball)
+		vendorPart("VendorCap" .. baseIdx, Vector3.new(1.3, 0.3, 1.3),
+			nil, Color3.fromRGB(180, 50, 50), Enum.PartType.Cylinder,
+			CFrame.new(vendorX, 3.95, vendorZ) * CFrame.Angles(0, 0, math.rad(90)))
+		-- Celemek putih menghadap jalan (sisi conveyor).
+		vendorPart("VendorApron" .. baseIdx, Vector3.new(0.15, 1.4, 1.2),
+			Vector3.new(vendorX + inward * 0.55, 1.9, vendorZ),
+			Color3.fromRGB(245, 245, 240))
+		-- TULISAN jualan di atas kanopi (BillboardGui, terbaca dari jalan).
+		local sign = Instance.new("BillboardGui")
+		sign.Name = "VendorCartSign" .. baseIdx
+		sign.Size = UDim2.fromOffset(220, 56)
+		sign.StudsOffsetWorldSpace = Vector3.new(0, 1.0, 0)
+		sign.AlwaysOnTop = false
+		sign.LightInfluence = 0
+		sign.Parent = canopyParts[1]
+		local signTextLabel = Instance.new("TextLabel")
+		signTextLabel.Name = "SignText"
+		signTextLabel.Size = UDim2.new(1, 0, 1, 0)
+		signTextLabel.BackgroundColor3 = Color3.fromRGB(150, 30, 30)
+		signTextLabel.BackgroundTransparency = 0.15
+		signTextLabel.Text = signText
+		signTextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+		signTextLabel.TextScaled = false
+		signTextLabel.TextSize = Config.CART_SIGN_TEXT_SIZE
+		signTextLabel.Font = Enum.Font.GothamBold
+		signTextLabel.Parent = sign
 	end
 end
 
@@ -977,6 +1238,7 @@ local function buildWorld()
 	buildLamps()
 	buildLanterns()
 	buildStalls()
+	buildVendorCarts()
 end
 
 -- ---------------------------------------------------------------------------
@@ -1147,62 +1409,97 @@ local CarriedModels = {} -- [Player] -> Model Brainrot yang dibawa | nil
 -- scale saat dibuat: pedestal/conveyor Config.BRAINROT_SCALE_CONVEYOR
 -- (2.6), dibawa Config.BRAINROT_SCALE_CARRIED (1.8), peti
 -- Config.BRAINROT_SCALE_CRATE (2.1) — FIX ROUND 5, +30%.
--- FIX ROUND 3: detail diperkaya per jenis (sayap/ekor/cangkir/telinga/
--- gong/dll) — jenis, roster, harga, dan income TIDAK berubah.
+-- FIX ROUND 7 (20 Nov, foto referensi): roster jadi HIBRIDA
+-- BINATANG + SAYURAN — ciri sayur HARUS terlihat dari part-part
+-- model, bukan cuma ganti nama: wortel oranye di ayam, labu oranye
+-- di babi, brokoli hijau di anjing, cabai merah di kucing, terong
+-- ungu di beruang, tomat merah di harimau, daun kol hijau di gajah.
 -- spec.Shape opsional: Enum.PartType (Ball untuk telinga/gong/dll).
 local BRAINROT_FEATURES = {
-	AyamIkan = {
-		{ Name = "Beak", Size = Vector3.new(0.3, 0.25, 0.4), Offset = Vector3.new(0, 1.95, 0.75), Color = Color3.fromRGB(255, 150, 0) },
+	AyamWortel = {
+		{ Name = "CarrotBeak", Size = Vector3.new(0.3, 0.25, 0.5), Offset = Vector3.new(0, 1.95, 0.75), Color = Color3.fromRGB(255, 140, 0) },
 		{ Name = "Comb", Size = Vector3.new(0.5, 0.35, 0.15), Offset = Vector3.new(0, 2.75, 0), Color = Color3.fromRGB(220, 40, 40) },
 		{ Name = "WingL", Size = Vector3.new(0.12, 0.7, 0.8), Offset = Vector3.new(-0.85, 1.1, 0), Color = Color3.fromRGB(250, 250, 245) },
 		{ Name = "WingR", Size = Vector3.new(0.12, 0.7, 0.8), Offset = Vector3.new(0.85, 1.1, 0), Color = Color3.fromRGB(250, 250, 245) },
-		{ Name = "TailFin", Size = Vector3.new(0.8, 0.5, 0.15), Offset = Vector3.new(0, 1.3, -0.9), Color = Color3.fromRGB(255, 150, 0) },
+		{ Name = "CarrotBack", Size = Vector3.new(0.4, 1.1, 0.4), Offset = Vector3.new(0, 1.2, -0.9), Color = Color3.fromRGB(255, 140, 0) },
+		{ Name = "CarrotLeaves", Size = Vector3.new(0.5, 0.35, 0.5), Offset = Vector3.new(0, 1.85, -0.9), Color = Color3.fromRGB(60, 170, 70) },
+		{ Name = "CarrotTopLeaves", Size = Vector3.new(0.45, 0.3, 0.45), Offset = Vector3.new(0, 2.8, 0), Color = Color3.fromRGB(60, 170, 70) },
 	},
-	BabiTerbang = {
-		{ Name = "WingL", Size = Vector3.new(1.1, 0.08, 0.7), Offset = Vector3.new(-1.15, 1.3, 0), Color = Color3.fromRGB(245, 245, 245) },
-		{ Name = "WingR", Size = Vector3.new(1.1, 0.08, 0.7), Offset = Vector3.new(1.15, 1.3, 0), Color = Color3.fromRGB(245, 245, 245) },
+	BabiLabu = {
 		{ Name = "Snout", Size = Vector3.new(0.5, 0.35, 0.3), Offset = Vector3.new(0, 1.9, 0.65), Color = Color3.fromRGB(255, 170, 190) },
+		{ Name = "EarL", Size = Vector3.new(0.3, 0.5, 0.15), Offset = Vector3.new(-0.45, 2.75, 0), Color = Color3.fromRGB(250, 200, 210) },
+		{ Name = "EarR", Size = Vector3.new(0.3, 0.5, 0.15), Offset = Vector3.new(0.45, 2.75, 0), Color = Color3.fromRGB(250, 200, 210) },
 		{ Name = "TailCurl", Size = Vector3.new(0.3, 0.3, 0.3), Offset = Vector3.new(0, 1.0, -0.9), Color = Color3.fromRGB(250, 200, 210), Shape = Enum.PartType.Ball },
+		{ Name = "PumpkinStem", Size = Vector3.new(0.25, 0.5, 0.25), Offset = Vector3.new(0, 2.8, 0), Color = Color3.fromRGB(50, 140, 60) },
+		{ Name = "PumpkinRibL", Size = Vector3.new(0.08, 1.2, 1.2), Offset = Vector3.new(-0.82, 1.0, 0), Color = Color3.fromRGB(220, 100, 0) },
+		{ Name = "PumpkinRibR", Size = Vector3.new(0.08, 1.2, 1.2), Offset = Vector3.new(0.82, 1.0, 0), Color = Color3.fromRGB(220, 100, 0) },
 	},
-	AnjingEsTeh = {
+	AnjingBrokoli = {
 		{ Name = "EarL", Size = Vector3.new(0.3, 0.6, 0.3), Offset = Vector3.new(-0.45, 2.8, 0), Color = Color3.fromRGB(120, 70, 30) },
 		{ Name = "EarR", Size = Vector3.new(0.3, 0.6, 0.3), Offset = Vector3.new(0.45, 2.8, 0), Color = Color3.fromRGB(120, 70, 30) },
 		{ Name = "Snout", Size = Vector3.new(0.5, 0.4, 0.4), Offset = Vector3.new(0, 1.85, 0.65), Color = Color3.fromRGB(200, 160, 110) },
 		{ Name = "Tail", Size = Vector3.new(0.25, 0.7, 0.25), Offset = Vector3.new(0, 0.9, -0.95), Color = Color3.fromRGB(120, 70, 30) },
-		{ Name = "TeaCup", Size = Vector3.new(0.45, 0.5, 0.45), Offset = Vector3.new(0.3, 2.85, 0), Color = Color3.fromRGB(180, 120, 60) },
+		{ Name = "BroccoliHead", Size = Vector3.new(0.9, 0.9, 0.9), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(60, 170, 80), Shape = Enum.PartType.Ball },
+		{ Name = "BroccoliHeadL", Size = Vector3.new(0.6, 0.6, 0.6), Offset = Vector3.new(-0.4, 2.6, 0.1), Color = Color3.fromRGB(60, 170, 80), Shape = Enum.PartType.Ball },
+		{ Name = "BroccoliHeadR", Size = Vector3.new(0.6, 0.6, 0.6), Offset = Vector3.new(0.4, 2.6, 0.1), Color = Color3.fromRGB(60, 170, 80), Shape = Enum.PartType.Ball },
+		{ Name = "BroccoliBack", Size = Vector3.new(0.8, 0.8, 0.8), Offset = Vector3.new(0, 1.6, -0.85), Color = Color3.fromRGB(60, 170, 80), Shape = Enum.PartType.Ball },
 	},
-	KucingRendang = {
+	KucingCabai = {
 		{ Name = "EarL", Size = Vector3.new(0.35, 0.5, 0.15), Offset = Vector3.new(-0.4, 2.8, 0), Color = Color3.fromRGB(60, 60, 60) },
 		{ Name = "EarR", Size = Vector3.new(0.35, 0.5, 0.15), Offset = Vector3.new(0.4, 2.8, 0), Color = Color3.fromRGB(60, 60, 60) },
 		{ Name = "Tail", Size = Vector3.new(0.25, 0.9, 0.25), Offset = Vector3.new(0, 0.9, -0.95), Color = Color3.fromRGB(60, 60, 60) },
 		{ Name = "Nose", Size = Vector3.new(0.2, 0.15, 0.1), Offset = Vector3.new(0, 1.95, 0.65), Color = Color3.fromRGB(255, 120, 150) },
 		{ Name = "WhiskerL", Size = Vector3.new(0.5, 0.05, 0.05), Offset = Vector3.new(-0.55, 1.95, 0.62), Color = Color3.fromRGB(240, 240, 240) },
 		{ Name = "WhiskerR", Size = Vector3.new(0.5, 0.05, 0.05), Offset = Vector3.new(0.55, 1.95, 0.62), Color = Color3.fromRGB(240, 240, 240) },
+		{ Name = "ChiliBack", Size = Vector3.new(0.35, 1.2, 0.35), Offset = Vector3.new(0, 1.5, -0.9), Color = Color3.fromRGB(220, 30, 30) },
+		{ Name = "ChiliStem", Size = Vector3.new(0.3, 0.25, 0.3), Offset = Vector3.new(0, 2.15, -0.9), Color = Color3.fromRGB(50, 140, 60) },
+		{ Name = "ChiliHead", Size = Vector3.new(0.5, 0.35, 0.5), Offset = Vector3.new(0, 2.8, 0), Color = Color3.fromRGB(220, 30, 30) },
 	},
-	BeruangDurian = {
-		{ Name = "Spike1", Size = Vector3.new(0.3, 0.5, 0.3), Offset = Vector3.new(-0.4, 1.7, 0), Color = Color3.fromRGB(30, 100, 40) },
-		{ Name = "Spike2", Size = Vector3.new(0.3, 0.5, 0.3), Offset = Vector3.new(0, 1.85, 0), Color = Color3.fromRGB(30, 100, 40) },
-		{ Name = "Spike3", Size = Vector3.new(0.3, 0.5, 0.3), Offset = Vector3.new(0.4, 1.7, 0), Color = Color3.fromRGB(30, 100, 40) },
+	BeruangTerong = {
 		{ Name = "EarL", Size = Vector3.new(0.5, 0.5, 0.5), Offset = Vector3.new(-0.5, 2.7, 0), Color = Color3.fromRGB(110, 70, 40), Shape = Enum.PartType.Ball },
 		{ Name = "EarR", Size = Vector3.new(0.5, 0.5, 0.5), Offset = Vector3.new(0.5, 2.7, 0), Color = Color3.fromRGB(110, 70, 40), Shape = Enum.PartType.Ball },
 		{ Name = "Snout", Size = Vector3.new(0.6, 0.4, 0.4), Offset = Vector3.new(0, 1.85, 0.62), Color = Color3.fromRGB(190, 150, 110) },
+		{ Name = "EggplantBack", Size = Vector3.new(0.7, 1.3, 0.7), Offset = Vector3.new(0, 1.3, -0.85), Color = Color3.fromRGB(120, 50, 180) },
+		{ Name = "EggplantStem", Size = Vector3.new(0.3, 0.3, 0.3), Offset = Vector3.new(0, 2.0, -0.85), Color = Color3.fromRGB(50, 140, 60) },
+		{ Name = "EggplantBelly", Size = Vector3.new(0.9, 1.0, 0.2), Offset = Vector3.new(0, 1.0, 0.82), Color = Color3.fromRGB(120, 50, 180) },
 	},
-	HarimauApi = {
-		{ Name = "Flame", Size = Vector3.new(0.5, 0.7, 0.2), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(255, 90, 0), Material = Enum.Material.Neon },
+	HarimauTomat = {
 		{ Name = "EarL", Size = Vector3.new(0.3, 0.4, 0.15), Offset = Vector3.new(-0.4, 2.75, 0), Color = Color3.fromRGB(200, 60, 20) },
 		{ Name = "EarR", Size = Vector3.new(0.3, 0.4, 0.15), Offset = Vector3.new(0.4, 2.75, 0), Color = Color3.fromRGB(200, 60, 20) },
 		{ Name = "Tail", Size = Vector3.new(0.3, 0.9, 0.3), Offset = Vector3.new(0, 0.9, -0.95), Color = Color3.fromRGB(230, 90, 20) },
 		{ Name = "StripeL", Size = Vector3.new(0.08, 1.0, 1.0), Offset = Vector3.new(-0.82, 1.0, 0), Color = Color3.fromRGB(40, 20, 10) },
 		{ Name = "StripeR", Size = Vector3.new(0.08, 1.0, 1.0), Offset = Vector3.new(0.82, 1.0, 0), Color = Color3.fromRGB(40, 20, 10) },
+		{ Name = "TomatoBack", Size = Vector3.new(0.9, 0.9, 0.9), Offset = Vector3.new(0, 1.5, -0.85), Color = Color3.fromRGB(220, 40, 40), Shape = Enum.PartType.Ball },
+		{ Name = "TomatoLeaves", Size = Vector3.new(0.5, 0.2, 0.5), Offset = Vector3.new(0, 2.0, -0.85), Color = Color3.fromRGB(50, 140, 60) },
+		{ Name = "TomatoHead", Size = Vector3.new(0.6, 0.5, 0.6), Offset = Vector3.new(0, 2.8, 0), Color = Color3.fromRGB(220, 40, 40), Shape = Enum.PartType.Ball },
 	},
-	GajahGamelan = {
+	GajahKol = {
 		{ Name = "Trunk", Size = Vector3.new(0.35, 1.0, 0.35), Offset = Vector3.new(0, 1.4, 0.7), Color = Color3.fromRGB(150, 150, 150) },
 		{ Name = "TuskL", Size = Vector3.new(0.18, 0.18, 0.8), Offset = Vector3.new(-0.45, 1.7, 0.75), Color = Color3.fromRGB(245, 245, 240) },
 		{ Name = "TuskR", Size = Vector3.new(0.18, 0.18, 0.8), Offset = Vector3.new(0.45, 1.7, 0.75), Color = Color3.fromRGB(245, 245, 240) },
 		{ Name = "EarL", Size = Vector3.new(0.25, 1.2, 1.0), Offset = Vector3.new(-0.75, 2.1, -0.1), Color = Color3.fromRGB(170, 170, 170), Shape = Enum.PartType.Ball },
 		{ Name = "EarR", Size = Vector3.new(0.25, 1.2, 1.0), Offset = Vector3.new(0.75, 2.1, -0.1), Color = Color3.fromRGB(170, 170, 170), Shape = Enum.PartType.Ball },
-		{ Name = "Gong", Size = Vector3.new(0.9, 0.9, 0.2), Offset = Vector3.new(0, 1.2, -0.85), Color = Color3.fromRGB(255, 210, 80), Material = Enum.Material.Metal, Shape = Enum.PartType.Ball },
+		{ Name = "CabbageBack", Size = Vector3.new(1.1, 1.1, 1.1), Offset = Vector3.new(0, 1.7, -0.7), Color = Color3.fromRGB(90, 200, 110), Shape = Enum.PartType.Ball },
+		{ Name = "CabbageBackL", Size = Vector3.new(0.8, 0.8, 0.8), Offset = Vector3.new(-0.5, 1.5, -0.7), Color = Color3.fromRGB(90, 200, 110), Shape = Enum.PartType.Ball },
+		{ Name = "CabbageBackR", Size = Vector3.new(0.8, 0.8, 0.8), Offset = Vector3.new(0.5, 1.5, -0.7), Color = Color3.fromRGB(90, 200, 110), Shape = Enum.PartType.Ball },
+		{ Name = "CabbageHead", Size = Vector3.new(0.7, 0.4, 0.7), Offset = Vector3.new(0, 2.8, 0), Color = Color3.fromRGB(90, 200, 110) },
 	},
+}
+
+-- Warna badan tiap hibrida (FIX ROUND 7): badan mengikuti
+-- BINATANGNYA (ayam krem, babi = labu oranye, anjing cokelat,
+-- kucing abu gelap, beruang cokelat, harimau oranye, gajah abu),
+-- BUKAN warna rarity — rarity tetap terbaca dari kalung warna
+-- rarity + aura rarity + label. Gajah Kol abu (dulu Gajah Gamelan
+-- emas — emasnya pindah ke kalung/aura kuning emas).
+local BRAINROT_BODY_COLORS = {
+	AyamWortel = Color3.fromRGB(245, 240, 225),
+	BabiLabu = Color3.fromRGB(255, 140, 20),
+	AnjingBrokoli = Color3.fromRGB(150, 100, 60),
+	KucingCabai = Color3.fromRGB(70, 70, 75),
+	BeruangTerong = Color3.fromRGB(110, 70, 40),
+	HarimauTomat = Color3.fromRGB(230, 120, 30),
+	GajahKol = Color3.fromRGB(170, 170, 170),
 }
 
 local function addBrainrotPart(model, name, size, offset, color, material, shape)
@@ -1224,7 +1521,8 @@ end
 -- Model Brainrot sederhana (badan + kepala + mata + ciri khas) dengan
 -- label nama + rarity + income. Origin model di kaki (y = 0) sehingga
 -- PivotTo(CFrame.new(posisi permukaan)) meletakkannya tepat di atas
--- permukaan. Gajah Gamelan: tubuh EMAS (Metal), gading putih, mata hitam.
+-- permukaan. Warna badan dari BRAINROT_BODY_COLORS (binatangnya);
+-- rarity terbaca dari kalung + aura + label.
 local function createBrainrotModel(kind, scale)
 	local entry = Config.Roster[kind]
 	if entry == nil then
@@ -1233,12 +1531,8 @@ local function createBrainrotModel(kind, scale)
 	local s = scale or 1
 	local model = Instance.new("Model")
 	model.Name = "Brainrot_" .. kind
-	local bodyColor = entry.Color
+	local bodyColor = BRAINROT_BODY_COLORS[kind] or entry.Color
 	local bodyMaterial = Enum.Material.SmoothPlastic
-	if kind == "GajahGamelan" then
-		bodyColor = Color3.fromRGB(255, 200, 60)
-		bodyMaterial = Enum.Material.Metal
-	end
 	local body = addBrainrotPart(model, "Body",
 		Vector3.new(1.6, 1.6, 1.6) * s, Vector3.new(0, 0.8 * s, 0),
 		bodyColor, bodyMaterial)
@@ -1276,6 +1570,24 @@ local function createBrainrotModel(kind, scale)
 				spec.Color, spec.Material, spec.Shape)
 		end
 	end
+	-- Aura rarity (FIX ROUND 7, foto image-37.png — glow hijau/biru
+	-- di hewan pajangan): bola Neon SANGAT transparan warna rarity
+	-- yang membungkus model + PointLight warna rarity yang lembut.
+	-- SATU tempat di sini: createBrainrotModel dipakai conveyor,
+	-- pedestal, dibawa, DAN di atas peti — jadi aura terlihat di
+	-- keempat tempat tanpa 4 copy. Lembut (Transparency 0.88,
+	-- Brightness 1, Range 8): tidak menyilaukan, tidak menutupi
+	-- model/label (label di atas kepala, di luar bola aura).
+	local auraShell = addBrainrotPart(model, "AuraShell",
+		Vector3.new(2.4, 2.8, 2.4) * s, Vector3.new(0, 1.4 * s, 0),
+		entry.Color, Enum.Material.Neon, Enum.PartType.Ball)
+	auraShell.Transparency = Config.BRAINROT_AURA_TRANSPARENCY
+	local auraLight = Instance.new("PointLight")
+	auraLight.Name = "AuraLight"
+	auraLight.Color = entry.Color
+	auraLight.Range = Config.BRAINROT_AURA_RANGE
+	auraLight.Brightness = Config.BRAINROT_AURA_BRIGHTNESS
+	auraLight.Parent = body
 	-- Label nama + rarity + income di atas model.
 	-- FIX ROUND 5: TextScaled dimatikan, TextSize tetap 16 (dulu teks
 	-- memenuhi label 180x64); ukuran label dari Config (160x44).
@@ -1664,7 +1976,7 @@ local function rollBrainrotKind()
 			return kind
 		end
 	end
-	return "GajahGamelan"
+	return "GajahKol"
 end
 
 -- Model Brainrot conveyor (skala Config.BRAINROT_SCALE_CONVEYOR = 2.6

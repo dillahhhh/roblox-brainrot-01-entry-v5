@@ -8,66 +8,70 @@
 local Config = {}
 
 -- Roster Brainrot: 7 tingkat rarity.
+-- FIX ROUND 7 (20 Nov, foto referensi): roster jadi HIBRIDA
+-- BINATANG + SAYURAN — key + DisplayName berubah, harga/income/
+-- rarity/warna TETAP. Key lama dipetakan ke baru saat load
+-- (DataStore LEGACY_KIND_MAP), bukan dihapus diam-diam.
 -- Tiap entri: DisplayName, Price (harga beli), Income (per detik),
 -- Sell (50% harga beli), Color (warna rarity), SpawnMax (batas atas
 -- roll 1-1000; peluang kumulatif, lihat RollMax di bawah).
 Config.Roster = {
-	AyamIkan = {
-		DisplayName = "Ayam Ikan",
+	AyamWortel = {
+		DisplayName = "Ayam Wortel",
 		Rarity = "Common",
 		Price = 50,
 		Income = 5,
 		Sell = 25,
 		Color = Color3.fromRGB(220, 220, 220),
-		RollMax = 450,
+		RollMax = 300,
 	},
-	BabiTerbang = {
-		DisplayName = "Babi Terbang",
+	BabiLabu = {
+		DisplayName = "Babi Labu",
 		Rarity = "Uncommon",
 		Price = 150,
 		Income = 15,
 		Sell = 75,
 		Color = Color3.fromRGB(110, 220, 110),
-		RollMax = 700,
+		RollMax = 550,
 	},
-	AnjingEsTeh = {
-		DisplayName = "Anjing Es Teh",
+	AnjingBrokoli = {
+		DisplayName = "Anjing Brokoli",
 		Rarity = "Rare",
 		Price = 400,
 		Income = 40,
 		Sell = 200,
 		Color = Color3.fromRGB(65, 165, 255),
-		RollMax = 880,
+		RollMax = 750,
 	},
-	KucingRendang = {
-		DisplayName = "Kucing Rendang",
+	KucingCabai = {
+		DisplayName = "Kucing Cabai",
 		Rarity = "Epic",
 		Price = 1000,
 		Income = 100,
 		Sell = 500,
 		Color = Color3.fromRGB(185, 85, 255),
-		RollMax = 960,
+		RollMax = 870,
 	},
-	BeruangDurian = {
-		DisplayName = "Beruang Durian",
+	BeruangTerong = {
+		DisplayName = "Beruang Terong",
 		Rarity = "Legendary",
 		Price = 3000,
 		Income = 300,
 		Sell = 1500,
 		Color = Color3.fromRGB(255, 140, 40),
-		RollMax = 988,
+		RollMax = 940,
 	},
-	HarimauApi = {
-		DisplayName = "Harimau Api",
+	HarimauTomat = {
+		DisplayName = "Harimau Tomat",
 		Rarity = "Mythic",
 		Price = 12000,
 		Income = 1200,
 		Sell = 6000,
 		Color = Color3.fromRGB(255, 65, 65),
-		RollMax = 998,
+		RollMax = 980,
 	},
-	GajahGamelan = {
-		DisplayName = "Gajah Gamelan",
+	GajahKol = {
+		DisplayName = "Gajah Kol",
 		Rarity = "Ultra Rare",
 		Price = 50000,
 		Income = 10000,
@@ -78,14 +82,19 @@ Config.Roster = {
 }
 
 -- Urutan roll spawn (1-1000): entri pertama yang RollMax-nya >= roll menang.
+-- FIX ROUND 7: peluang BARU — Common 30%, Uncommon 25%, Rare 20%,
+-- Epic 12%, Legendary 7%, Mythic 4%, Ultra Rare 2% (dulu 45/25/18/
+-- 8/2.8/1/0.2 — conveyor kebanyakan Common). Harga/income, interval
+-- spawn 3.5 detik, kecepatan conveyor 16, dan aturan flood/peti
+-- TIDAK berubah.
 Config.RosterOrder = {
-	"AyamIkan",
-	"BabiTerbang",
-	"AnjingEsTeh",
-	"KucingRendang",
-	"BeruangDurian",
-	"HarimauApi",
-	"GajahGamelan",
+	"AyamWortel",
+	"BabiLabu",
+	"AnjingBrokoli",
+	"KucingCabai",
+	"BeruangTerong",
+	"HarimauTomat",
+	"GajahKol",
 }
 
 -- Ekonomi + progression
@@ -176,14 +185,46 @@ Config.SAFE_HALF_Z = 23
 -- sehingga yang tersisa hanya z = -150, 136, 149 per sisi.
 Config.TREE_CLEAR_HALF_Z = 40
 
--- Pencahayaan malam (FIX ROUND 3, 20 Nov): area luar base diterangkan
--- tanpa menghilangkan nuansa pasar malam — Brightness naik 2 -> 2.8,
--- Ambient + OutdoorAmbient lebih terang, lampu jalan lebih kuat.
-Config.LIGHT_BRIGHTNESS = 2.8
-Config.LIGHT_AMBIENT = Color3.fromRGB(130, 110, 140)
-Config.LIGHT_OUTDOOR_AMBIENT = Color3.fromRGB(100, 88, 115)
+-- Pencahayaan SENJA (FIX ROUND 7, 20 Nov, foto referensi
+-- image-37/image-36.png): langit jingga-pink, cahaya hangat,
+-- suasana SETERANG di foto (terang, kebaca, jangan terlalu gelap).
+-- Dulu malam (ClockTime 20.5, Brightness 2.8, Ambient redup).
+-- Lampu jalan + lampion TETAP nyala sebagai aksen; hutan di tepi
+-- boleh lebih gelap (siluet) seperti gunung/pohon di foto.
+Config.LIGHT_CLOCK_TIME = 17.2
+Config.LIGHT_BRIGHTNESS = 3
+Config.LIGHT_AMBIENT = Color3.fromRGB(205, 165, 140)
+Config.LIGHT_OUTDOOR_AMBIENT = Color3.fromRGB(215, 155, 120)
 Config.LAMP_BRIGHTNESS = 2
 Config.LAMP_RANGE = 26
+
+-- Aura rarity Brainrot (FIX ROUND 7): glow lembut warna rarity
+-- di createBrainrotModel (satu tempat: conveyor, pedestal,
+-- dibawa, peti). Bola Neon sangat transparan + PointLight.
+Config.BRAINROT_AURA_TRANSPARENCY = 0.88
+Config.BRAINROT_AURA_RANGE = 8
+Config.BRAINROT_AURA_BRIGHTNESS = 1
+
+-- Gerobak jualan depan base (FIX ROUND 7, foto image-37.png):
+-- 1 gerobak BESAR per base, di samping jalan masuk (z = zCenter
+-- ± CART_Z_OFFSET, sisi berselang-seling ganjil/genap), x =
+-- depan base + CART_X_FROM_FRONT ke arah conveyor — DI LUAR
+-- jalur conveyor (x = ±7.5), DI LUAR kaca lock depan
+-- (xCenter ± 28), dan TIDAK menutup pintu base (pintu di zCenter,
+-- gerobak 20 stud ke samping). Tulisan bergiliran 1-2-3-1-2-3-1-2
+-- untuk base 1..8. Dekorasi SAJA (tanpa interaksi/remote/ekonomi).
+Config.CART_X_FROM_FRONT = 5
+Config.CART_Z_OFFSET = 20
+Config.CART_SIGN_TEXTS = { "JUAL CILOK", "JUAL BATAGOR", "JUAL BASO" }
+Config.CART_SIGN_TEXT_SIZE = 26
+
+-- Kabel lampion (FIX ROUND 7, foto image-37.png): kabel tipis di
+-- atas tiap rentang lampion sisi jalan (y = LANTERN_CABLE_Y,
+-- sedikit di atas lampion tertinggi) + kabel melintang di atas
+-- conveyor (y = CROSS_CABLE_Y, di atas Brainrot + labelnya)
+-- dengan lampion gantung kecil. Deterministik (aritmetika).
+Config.LANTERN_CABLE_Y = 7.35
+Config.CROSS_CABLE_Y = 9.5
 
 -- Papan nama base (FIX ROUND 3, 20 Nov): papan 240x80 (dulu 320x110),
 -- headshot 64x64 di kiri + nama di kanan, teks tetap TextSize 26
