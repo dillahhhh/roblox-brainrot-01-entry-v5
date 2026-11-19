@@ -2584,8 +2584,8 @@ local function createConveyorModel(item)
 	local rosterEntry = Config.Roster[item.Kind]
 	local price = (rosterEntry and rosterEntry.Price) or 0
 	local prompt = Instance.new("ProximityPrompt")
-	prompt.ActionText = "Beli"
-	prompt.ObjectText = ((rosterEntry and rosterEntry.DisplayName) or item.Kind) .. " — $" .. tostring(price)
+	prompt.ActionText = "Beli" -- FIX ROUND 11 (20 Nov): ditulis ulang; conveyor itu BELI, bukan ambil gratis
+	prompt.ObjectText = ((rosterEntry and rosterEntry.DisplayName) or item.Kind) .. " — $" .. tostring(price) -- FIX ROUND 11 (20 Nov): ditulis ulang; harga terlihat di prompt
 	prompt.HoldDuration = 0
 	prompt.MaxActivationDistance = Config.TAKE_RANGE -- 32 stud, kedua jalur terjangkau dari tempat berdiri natural (laporan bos 05:02 WIB 20 Nov)
 	-- FIX ROUND 10 (20 Nov): RequiresLineOfSight = false. Prompt
@@ -3130,21 +3130,21 @@ local function onTakeRequest(player, uid)
 		Remotes.Notify:FireClient(player, "Brainrot tidak dikenal.")
 		return
 	end
-	local price = rosterEntry.Price
-	if state.Money < price then
-		Remotes.Notify:FireClient(player, "Uang tidak cukup — " .. rosterEntry.DisplayName .. " harganya $" .. tostring(price) .. ".")
+	local price = rosterEntry.Price -- FIX ROUND 11 (20 Nov): ditulis ulang; harga dari Roster
+	if state.Money < price then -- FIX ROUND 11 (20 Nov): ditulis ulang; uang kurang -> tolak, tanpa Brainrot dan tanpa kurangi uang
+		Remotes.Notify:FireClient(player, "Uang tidak cukup — " .. rosterEntry.DisplayName .. " harganya $" .. tostring(price) .. ".") -- FIX ROUND 11 (20 Nov): ditulis ulang
 		return
 	end
 	-- Sukses (BELI): satu langkah sinkron, tanpa yield di tengah —
 	-- kurangi uang DALAM langkah yang sama dengan pemberian Brainrot.
-	state.Money = state.Money - price
+	state.Money = state.Money - price -- FIX ROUND 11 (20 Nov): ditulis ulang; potong uang dalam langkah sinkron yang sama dengan pemberian Brainrot
 	table.remove(ConveyorItems, foundIdx)
 	destroyConveyorModel(item.Uid)
 	state.Carried = { Uid = item.Uid, Kind = item.Kind }
 	refreshCarriedVisual(player)
 	markCollected(player, item.Kind) -- FITUR INDEX: beli conveyor = dapat
-	Economy.sendMoneyUpdate(Players, player, Remotes)
-	Remotes.Notify:FireClient(player, "Kamu membeli " .. rosterEntry.DisplayName .. " seharga $" .. tostring(price) .. "!")
+	Economy.sendMoneyUpdate(Players, player, Remotes) -- FIX ROUND 11 (20 Nov): ditulis ulang; uang baru langsung terlihat, bukan menunggu tick income
+	Remotes.Notify:FireClient(player, "Kamu membeli " .. rosterEntry.DisplayName .. " seharga $" .. tostring(price) .. "!") -- FIX ROUND 11 (20 Nov): ditulis ulang
 end
 
 -- ---------------------------------------------------------------------------

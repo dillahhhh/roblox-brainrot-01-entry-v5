@@ -442,7 +442,7 @@ Config.STEAL_RANGE = 12
 -- 20 stud masih terlalu mepet dari tempat berdiri natural, jadi
 -- CLAIM_RANGE 20 -> 28. Prompt "Buka Peti" + validasi server
 -- Flood.claimCrate sama-sama membaca konstanta ini.
-Config.CLAIM_RANGE = 28
+Config.CLAIM_RANGE = 28 -- FIX ROUND 11 (20 Nov): ditulis ulang; 28 stud = peti yang tersebar saat Scramble tetap terjangkau dari tempat berdiri natural
 
 -- Beli Brainrot dari conveyor (FIX ROUND 5, 20 Nov): jangkauan beli
 -- khusus 24 stud (lebih jauh dari STEAL_RANGE 12) agar kedua jalur
@@ -457,7 +457,7 @@ Config.CLAIM_RANGE = 28
 -- kadang engga. TAKE_RANGE 24 -> 32 supaya kedua jalur selalu
 -- terjangkau dari tempat berdiri natural. Prompt "Beli" + validasi
 -- server onTakeRequest sama-sama membaca konstanta ini.
-Config.TAKE_RANGE = 32
+Config.TAKE_RANGE = 32 -- FIX ROUND 11 (20 Nov): ditulis ulang; 32 stud = jalur jauh (~28 stud dari tepi conveyor) selalu terjangkau
 
 -- Dinding pembatas tepi map (FIX ROUND 6, 20 Nov): pemain bisa jalan
 -- sampai ujung terrain dan jatuh. 4 dinding transparan (Transparency 1,

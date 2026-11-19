@@ -523,6 +523,20 @@ end
 
 local function updateRebirthButton()
 	rebirthButton.Text = "Rebirth (" .. formatMoney(rebirthCost()) .. ")"
+	-- FIX ROUND 11 (20 Nov): tombol abu-abu + tidak bisa diklik saat
+	-- uang di bawah biaya rebirth. Server memang sudah menolak
+	-- (toast "Rebirth butuh $..."), tapi tombol yang selalu aktif
+	-- membuat bos mengira rebirth bisa dilakukan dengan uang sedikit.
+	-- Status diperbarui tiap MoneyUpdate dan setelah rebirth berhasil.
+	if money >= rebirthCost() then
+		rebirthButton.Active = true
+		rebirthButton.BackgroundColor3 = Color3.fromRGB(140, 60, 160)
+		rebirthButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	else
+		rebirthButton.Active = false
+		rebirthButton.BackgroundColor3 = Color3.fromRGB(90, 90, 100)
+		rebirthButton.TextColor3 = Color3.fromRGB(180, 180, 180)
+	end
 end
 
 -- Konfirmasi rebirth (biaya tampil dari hitungan lokal, informatif).
@@ -542,6 +556,11 @@ local confirmNo = makeButton(confirmFrame, "ConfirmNo",
 confirmNo.AnchorPoint = Vector2.new(1, 0)
 
 local function showRebirthConfirm()
+	-- FIX ROUND 11 (20 Nov): dialog hanya dibuka saat uang cukup —
+	-- pengaman kedua selain tombol yang sudah tidak aktif (Active = false).
+	if money < rebirthCost() then
+		return
+	end
 	local nextMult = 1 + (localRebirths + 1) * 0.5
 	confirmLabel.Text = "Rebirth seharga " .. formatMoney(rebirthCost()) .. "?\n"
 		.. "Uang direset ke $100, slot + bawaan dihapus,\n"
@@ -631,6 +650,10 @@ trackConnection(Remotes.MoneyUpdate.OnClientEvent:Connect(function(newMoney, new
 		incomePerSec = newIncome
 	end
 	updateMoneyPanel()
+	-- FIX ROUND 11 (20 Nov): status tombol Rebirth ikut diperbarui
+	-- tiap uang berubah (tick income, beli, jual, rebirth) supaya
+	-- tombol abu-abu/aktif selalu sesuai uang saat ini.
+	updateRebirthButton()
 end))
 
 trackConnection(Remotes.FloodEvent.OnClientEvent:Connect(function(phase, remaining)
