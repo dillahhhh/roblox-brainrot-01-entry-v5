@@ -8,6 +8,8 @@
 -- Fix pasca-uji Studio bos (20 Nov, round 2): tombol "Jual yang
 -- dibawa" (SellCarriedRequest, hanya saat membawa) + lari Shift
 -- (WalkSpeed 28 tahan / 16 lepas, client-side, tanpa stamina).
+-- Fitur 20 Nov: tombol HUD "Nama" ON/OFF — sembunyikan label
+-- Brainrot + nametag pemain (client-only, tanpa server).
 -- Client TIDAK PERNAH mengubah uang/state — hanya menampilkan dan
 -- mengirim permintaan via RemoteEvent; server yang memvalidasi semuanya.
 --
@@ -42,6 +44,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local SoundService = game:GetService("SoundService")
 local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -59,6 +62,7 @@ local localRebirths = 0 -- hitungan lokal, informatif (lihat header)
 local floodPhase = "Idle"
 local floodRemaining = 0 -- sisa detik fase berjalan (dari FloodEvent)
 local muted = false
+local namesVisible = true -- toggle nama Brainrot + nametag pemain (default ON)
 local collected = {} -- kind -> true, dari server via IndexUpdate (FITUR INDEX)
 
 local alive = true
@@ -513,6 +517,14 @@ local muteButton = makeButton(screenGui, "MuteButton",
 muteButton.AnchorPoint = Vector2.new(1, 0)
 muteButton.TextSize = 15
 
+-- Tombol Nama di bawah tombol mute (pojok kanan atas): matikan/
+-- nyalakan label Brainrot + nametag pemain. Default ON.
+local nameToggleButton = makeButton(screenGui, "NameToggleButton",
+	UDim2.fromOffset(120, 36), UDim2.new(1, -12, 0, 52),
+	"Nama: ON", Color3.fromRGB(60, 60, 70))
+nameToggleButton.AnchorPoint = Vector2.new(1, 0)
+nameToggleButton.TextSize = 15
+
 local function updateLockButton()
 	if locked then
 		lockButton.Text = "Buka Base"
@@ -616,6 +628,96 @@ trackConnection(muteButton.MouseButton1Click:Connect(function()
 	else
 		muteButton.Text = "Suara: ON"
 		startBgm()
+	end
+end))
+
+-- ---------------------------------------------------------------------------
+-- Toggle nama: label Brainrot + nametag pemain (client-only, 20 Nov).
+-- Tombol "Nama" di pojok kanan atas, di bawah tombol mute. Default ON
+-- (nama terlihat seperti sekarang). OFF: semua BillboardGui
+-- "BrainrotLabel" di Workspace disembunyikan (Enabled = false) +
+-- Humanoid.DisplayDistanceType = None di tiap karakter (nametag
+-- default Roblox hilang). ON: dikembalikan (Enabled = true,
+-- DisplayDistanceType = Viewer). HANYA "BrainrotLabel" yang disentuh
+-- — label peti ("CrateLabel") dan papan owner base ("OwnerBoard" +
+-- "OwnerName") TIDAK disentuh. Server tidak tahu/tidak perlu tahu:
+-- ini preferensi tampilan lokal, tanpa persist DataStore.
+-- ---------------------------------------------------------------------------
+
+local function applyBrainrotLabelVisibility()
+	for _, descendant in ipairs(Workspace:GetDescendants()) do
+		if descendant:IsA("BillboardGui") and descendant.Name == "BrainrotLabel" then
+			descendant.Enabled = namesVisible
+		end
+	end
+end
+
+local function applyNametagVisibility(player)
+	local character = player.Character
+	if character == nil then
+		return
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid == nil then
+		return
+	end
+	if namesVisible then
+		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
+	else
+		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	end
+end
+
+local function applyAllNametags()
+	for _, player in ipairs(Players:GetPlayers()) do
+		applyNametagVisibility(player)
+	end
+end
+
+local function updateNameToggleButton()
+	nameToggleButton.Text = namesVisible and "Nama: ON" or "Nama: OFF"
+end
+
+-- Terapkan state ke Brainrot baru yang muncul belakangan (conveyor
+-- spawn tiap 3.5 detik, pedestal refresh, peti, pameran): sapu sekali
+-- saat toggle saja tidak cukup.
+trackConnection(Workspace.DescendantAdded:Connect(function(descendant)
+	if descendant:IsA("BillboardGui") and descendant.Name == "BrainrotLabel" then
+		descendant.Enabled = namesVisible
+	end
+end))
+
+-- Nametag: terapkan ke pemain yang sudah ada + yang join belakangan,
+-- dan tiap kali karakter (re)spawn (Humanoid baru = DisplayDistanceType
+-- kembali default, jadi harus diterapkan ulang).
+local function watchPlayerNametag(player)
+	trackConnection(player.CharacterAdded:Connect(function()
+		task.spawn(function()
+			local character = player.Character
+			if character == nil then
+				return
+			end
+			character:WaitForChild("Humanoid", 10)
+			applyNametagVisibility(player)
+		end)
+	end))
+	applyNametagVisibility(player)
+end
+
+for _, player in ipairs(Players:GetPlayers()) do
+	watchPlayerNametag(player)
+end
+trackConnection(Players.PlayerAdded:Connect(watchPlayerNametag))
+
+trackConnection(nameToggleButton.MouseButton1Click:Connect(function()
+	namesVisible = not namesVisible
+	updateNameToggleButton()
+	applyBrainrotLabelVisibility()
+	applyAllNametags()
+	if namesVisible then
+		showToast("Nama Brainrot + pemain: ON")
+	else
+		showToast("Nama Brainrot + pemain: OFF")
 	end
 end))
 
