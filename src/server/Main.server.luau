@@ -510,6 +510,16 @@ local function buildOneBase(baseIdx, xCenter, zCenter)
 			prompt.ObjectText = "Base " .. baseIdx
 			prompt.HoldDuration = 0
 			prompt.MaxActivationDistance = 12
+			-- FIX ROUND 12 (20 Nov): RequiresLineOfSight = false. Prompt
+			-- di-parent ke pedestal, dan Brainrot yang dipajang berdiri
+			-- TEPAT DI ATAS pedestal itu — sinar LOS dari kamera ke
+			-- pedestal selalu ketutup badan/kepala Brainrot sendiri, jadi
+			-- prompt "Jual" (pemilik + slot terisi) dan "Curi Brainrot"
+			-- (bukan pemilik + slot terisi) tidak pernah muncul. Slot
+			-- kosong tidak ada Brainrot, jadi "Taruh" muncul normal.
+			-- Bug kelas yang sama dengan round 10 (conveyor + peti),
+			-- yang hanya memperbaiki 2 prompt itu.
+			prompt.RequiresLineOfSight = false
 			prompt.Enabled = false -- belum ada pemilik; diaktifkan refreshPedestalPrompt saat base terisi (Stage 5)
 			prompt:SetAttribute("PromptKind", "Pedestal")
 			prompt:SetAttribute("OwnerUserId", 0)
