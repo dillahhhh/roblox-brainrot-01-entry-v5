@@ -107,6 +107,7 @@ local REMOTE_NAMES = {
 	"RebirthRequest",
 	"ClaimRequest",
 	"TakeRequest",
+	"SellCarriedRequest",
 	"DebugFlood",
 }
 
@@ -268,45 +269,197 @@ local function buildOneBase(baseIdx, xCenter, zCenter)
 	floor.Name = "BaseFloor" .. baseIdx
 	World.BaseCenter[baseIdx] = Vector3.new(xCenter, 0.8, zCenter)
 
-	-- Rumah base (gaya pasar malam, kayu/bata warna hangat): dinding
-	-- belakang + 2 dinding samping + atap; depan TERBUKA menghadap
-	-- pusat/conveyor. Dinding 1 stud ke dalam dari kaca lock (x ±28 /
-	-- z ±23) supaya tidak z-fighting dengan kaca. World.BaseCenter
-	-- dan World.PedestalPos TIDAK berubah; pedestal tetap di tempatnya
-	-- (dinding samping di z ±22 berjarak 13 stud dari pedestal z ±9,
-	-- jadi prompt pedestal jarak 12 tidak terhalang).
+	-- Rumah base — RUMAH ADAT NUSANTARA (gaya pasar tradisional,
+	-- tema game): rumah joglo/limasan yang TINGGI. Dinding kayu hangat
+	-- 12 stud (y 0.8-12.8, dulu 8) dengan bukaan jendela, atap
+	-- limasan 2 bidang miring + bubungan + overhang, teras depan
+	-- (kanopi + tiang + keset), kusen pintu depan, trim warna hangat.
+	-- Depan TERBUKA menghadap pusat/conveyor. ANGKA ATAP (cek nyata):
+	-- dinding atas y 12.8, lis atap (eave) y 12.6, bubungan y 18.2,
+	-- balok bubungan atas y 18.7, hiasan ujung bubungan atas y 19.7 —
+	-- semuanya di bawah papan nama pemilik di y 20.5 (jarak 1.8 stud
+	-- dari bubungan). World.BaseCenter dan World.PedestalPos TIDAK
+	-- berubah; dinding 1 stud ke dalam dari kaca lock (x ±27 / z ±22
+	-- terhadap kaca ±28 / ±23); footprint tetap dalam lantai 56x46.
+	-- Dinding samping di z ±22 berjarak 13 stud dari pedestal z ±9,
+	-- jadi prompt pedestal (jarak 12) tidak terhalang; tiang/kusen
+	-- depan di tepi lantai, bukan di jalur pedestal.
 	local inward = (xCenter < 0) and 1 or -1 -- arah dari base ke pusat (x=0)
 	local backX = xCenter - inward * 27 -- dinding belakang (sisi luar base)
-	local houseColor = Color3.fromRGB(165, 110, 70)
-	local roofColor = Color3.fromRGB(150, 60, 50)
-	-- Dinding belakang: sepanjang z (46), tinggi 8, dari lantai (y 0.8) ke y 8.8.
-	makePart(
-		"BaseHouseBack" .. baseIdx,
-		Vector3.new(1, 8, 46),
-		Vector3.new(backX, 4.8, zCenter),
-		Enum.Material.Brick,
-		houseColor
-	)
-	-- Dinding samping: sepanjang x (54, dari belakang sampai tepi depan
-	-- yang terbuka), di z ±22.
+	local frontX = xCenter + inward * 27 -- tepi depan yang terbuka
+	local houseColor = Color3.fromRGB(165, 110, 70) -- kayu hangat
+	local trimColor = Color3.fromRGB(190, 80, 55) -- trim merah hangat
+	local darkWood = Color3.fromRGB(110, 70, 40)
+	local roofColor = Color3.fromRGB(150, 60, 50) -- genteng merah
+	-- Pembantu dinding berjendela: pita bawah (y 0.8-3.8) + pita atas
+	-- (y 9.8-12.8, warna trim) penuh, tiang di antaranya (y 3.8-9.8)
+	-- sehingga jendela terbuka di antara tiang. `axis` = "x" (dinding
+	-- sepanjang sumbu X, di z tetap) atau "z" (sepanjang Z, di x tetap);
+	-- `centers` = posisi tengah tiang sepanjang sumbu dinding,
+	-- `widths` = lebar tiap tiang.
+	local function buildWindowWall(axis, fixedCoord, centers, widths)
+		local function wallPart(size, position, color, material)
+			return makePart("BaseHouseWall" .. baseIdx, size, position,
+				material or Enum.Material.Wood, color)
+		end
+		if axis == "z" then
+			-- Dinding belakang: sepanjang z (46), tebal 1 (x).
+			wallPart(Vector3.new(1, 3, 46), Vector3.new(backX, 2.3, zCenter), houseColor, Enum.Material.Brick)
+			wallPart(Vector3.new(1, 3, 46), Vector3.new(backX, 11.3, zCenter), trimColor, Enum.Material.Wood)
+			for i, c in ipairs(centers) do
+				wallPart(Vector3.new(1, 6, widths[i]), Vector3.new(backX, 6.8, zCenter + c), houseColor)
+			end
+		else
+			-- Dinding samping: sepanjang x (54), tebal 1 (z).
+			wallPart(Vector3.new(54, 3, 1), Vector3.new(xCenter, 2.3, fixedCoord), houseColor)
+			wallPart(Vector3.new(54, 3, 1), Vector3.new(xCenter, 11.3, fixedCoord), trimColor, Enum.Material.Wood)
+			for i, c in ipairs(centers) do
+				wallPart(Vector3.new(widths[i], 6, 1), Vector3.new(xCenter + c, 6.8, fixedCoord), houseColor)
+			end
+		end
+	end
+	-- Dinding belakang: 3 jendela (lebar 9) di antara 4 tiang.
+	buildWindowWall("z", backX, { -21.25, -7.5, 7.5, 21.25 }, { 3.5, 6, 6, 3.5 })
+	-- Dinding samping: 3 jendela (lebar 10) di antara 4 tiang.
+	for _, sideSign in ipairs({ -1, 1 }) do
+		buildWindowWall("x", zCenter + sideSign * 22, { -25, -9, 9, 25 }, { 4, 8, 8, 4 })
+	end
+	-- Tiang joglo depan (2 tiang di tepi depan, menopang lis atap)
+	-- + balok depan melintang di atasnya (y 11.8-12.8).
 	for _, sideSign in ipairs({ -1, 1 }) do
 		makePart(
-			"BaseHouseSide" .. baseIdx,
-			Vector3.new(54, 8, 1),
-			Vector3.new(xCenter, 4.8, zCenter + sideSign * 22),
+			"BaseHousePillar" .. baseIdx,
+			Vector3.new(1.5, 12, 1.5),
+			Vector3.new(frontX, 6.8, zCenter + sideSign * 18),
 			Enum.Material.Wood,
-			houseColor
+			darkWood
 		)
 	end
-	-- Atap: menutup seluruh lantai (sedikit overhang), y 8.3-8.9;
-	-- papan nama di y 20.5 tetap di atas atap.
 	makePart(
-		"BaseHouseRoof" .. baseIdx,
-		Vector3.new(58, 0.6, 48),
-		Vector3.new(xCenter, 8.6, zCenter),
-		Enum.Material.Brick,
-		roofColor
+		"BaseHouseBeam" .. baseIdx,
+		Vector3.new(1.5, 1, 40),
+		Vector3.new(frontX, 12.3, zCenter),
+		Enum.Material.Wood,
+		trimColor
 	)
+	-- Kusen pintu depan (tengah bukaan, menghadap conveyor): 2 tiang
+	-- + ambang atas; celah jalan 7 stud, tidak menghalangi pedestal.
+	for _, sideSign in ipairs({ -1, 1 }) do
+		makePart(
+			"BaseHouseDoorPost" .. baseIdx,
+			Vector3.new(1, 8, 1),
+			Vector3.new(frontX, 4.8, zCenter + sideSign * 3.5),
+			Enum.Material.Wood,
+			darkWood
+		)
+	end
+	makePart(
+		"BaseHouseDoorLintel" .. baseIdx,
+		Vector3.new(1, 0.8, 8),
+		Vector3.new(frontX, 9.2, zCenter),
+		Enum.Material.Wood,
+		trimColor
+	)
+	-- Teras depan: lantai teras rata dengan lantai base (atas y 0.8),
+	-- menjorok 6 stud ke arah conveyor; keset merah di depan pintu;
+	-- 2 tiang teras + kanopi miring di atasnya.
+	local terrace = makePart(
+		"BaseTerrace" .. baseIdx,
+		Vector3.new(6, 0.8, 30),
+		Vector3.new(frontX + inward * 3, 0.4, zCenter),
+		Enum.Material.WoodPlanks,
+		Color3.fromRGB(140, 95, 55)
+	)
+	terrace.CanCollide = true
+	local doormat = makePart(
+		"BaseDoormat" .. baseIdx,
+		Vector3.new(4, 0.15, 6),
+		Vector3.new(frontX + inward * 3, 0.88, zCenter),
+		Enum.Material.SmoothPlastic,
+		Color3.fromRGB(180, 50, 50)
+	)
+	doormat.CanCollide = false
+	for _, sideSign in ipairs({ -1, 1 }) do
+		makePart(
+			"BaseTerracePillar" .. baseIdx,
+			Vector3.new(1.2, 10, 1.2),
+			Vector3.new(frontX + inward * 5.4, 5.8, zCenter + sideSign * 12),
+			Enum.Material.Wood,
+			darkWood
+		)
+	end
+	local canopy = Instance.new("Part")
+	canopy.Name = "BaseTerraceCanopy" .. baseIdx
+	canopy.Size = Vector3.new(7.5, 0.4, 28)
+	canopy.CFrame = CFrame.new(frontX + inward * 3, 11.2, zCenter)
+		* CFrame.Angles(0, 0, -inward * math.rad(12))
+	canopy.Material = Enum.Material.Wood
+	canopy.Color = roofColor
+	canopy.Anchored = true
+	canopy.CanCollide = false
+	canopy.Parent = Workspace
+	-- Atap limasan: bubungan sepanjang sumbu Z di xCenter, 2 bidang
+	-- miring (depan menghadap conveyor + belakang). Lis y 12.6 di
+	-- xCenter ± 29 (overhang 1 stud dari lantai), bubungan y 18.2:
+	-- naik 5.6 run 29, kemiringan ~11 derajat, panjang bidang
+	-- sqrt(29^2 + 5.6^2) = 29.6. Bidang +x miring -11 derajat (ujung
+	-- luar turun), bidang -x +11 derajat.
+	local roofRun = 29
+	local roofRise = 5.6 -- 18.2 - 12.6
+	local roofAngle = math.atan2(roofRise, roofRun)
+	local roofSlopeLen = math.sqrt(roofRun * roofRun + roofRise * roofRise)
+	local roofMidY = 12.6 + roofRise / 2 -- 15.4
+	for _, sideSign in ipairs({ -1, 1 }) do
+		local slope = Instance.new("Part")
+		slope.Name = "BaseHouseRoof" .. baseIdx
+		slope.Size = Vector3.new(roofSlopeLen, 0.6, 50)
+		slope.CFrame = CFrame.new(xCenter + sideSign * (roofRun / 2), roofMidY, zCenter)
+			* CFrame.Angles(0, 0, -sideSign * roofAngle)
+		slope.Material = Enum.Material.Brick
+		slope.Color = roofColor
+		slope.Anchored = true
+		slope.CanCollide = true
+		slope.Parent = Workspace
+	end
+	-- Bubungan: balok memanjang di puncak (atas y 18.7) + hiasan
+	-- ujung bubungan (bola emas, atas y 19.7, di z ±24.5 jauh dari
+	-- papan nama di tengah) — tetap di bawah papan nama y 20.5.
+	makePart(
+		"BaseHouseRidge" .. baseIdx,
+		Vector3.new(1.4, 1, 51),
+		Vector3.new(xCenter, 18.2, zCenter),
+		Enum.Material.Wood,
+		darkWood
+	)
+	for _, endSign in ipairs({ -1, 1 }) do
+		local finial = Instance.new("Part")
+		finial.Name = "BaseHouseFinial" .. baseIdx
+		finial.Shape = Enum.PartType.Ball
+		finial.Size = Vector3.new(1.6, 1.6, 1.6)
+		finial.Position = Vector3.new(xCenter, 18.9, zCenter + endSign * 24.5)
+		finial.Material = Enum.Material.Metal
+		finial.Color = Color3.fromRGB(220, 180, 60)
+		finial.Anchored = true
+		finial.CanCollide = false
+		finial.Parent = Workspace
+	end
+	-- Lampu dinding dalam (bola Neon hangat + PointLight) di dinding
+	-- belakang bagian dalam, di atas jendela tengah (y 9.5).
+	local wallLamp = Instance.new("Part")
+	wallLamp.Name = "BaseWallLamp" .. baseIdx
+	wallLamp.Shape = Enum.PartType.Ball
+	wallLamp.Size = Vector3.new(1, 1, 1)
+	wallLamp.Position = Vector3.new(backX + inward * 2, 9.5, zCenter)
+	wallLamp.Material = Enum.Material.Neon
+	wallLamp.Color = Color3.fromRGB(255, 200, 110)
+	wallLamp.Anchored = true
+	wallLamp.CanCollide = false
+	wallLamp.Parent = Workspace
+	local wallGlow = Instance.new("PointLight")
+	wallGlow.Color = Color3.fromRGB(255, 190, 110)
+	wallGlow.Range = 15
+	wallGlow.Brightness = 1
+	wallGlow.Parent = wallLamp
 
 	-- 6 pedestal silinder (2 baris x 3 kolom), permukaan atas y = 1.7.
 	World.PedestalPos[baseIdx] = {}
@@ -345,7 +498,8 @@ local function buildOneBase(baseIdx, xCenter, zCenter)
 		end
 	end
 
-	-- Papan nama pemilik (BillboardGui, y = 20.5) + papan "make.fun".
+	-- Papan nama pemilik (BillboardGui, y = 20.5) — di atas atap
+	-- (bubungan y 18.2, balok bubungan atas y 18.7).
 	local boardAnchor = Instance.new("Part")
 	boardAnchor.Name = "OwnerBoardAnchor" .. baseIdx
 	boardAnchor.Size = Vector3.new(1, 1, 1)
@@ -365,24 +519,13 @@ local function buildOneBase(baseIdx, xCenter, zCenter)
 
 	local ownerLabel = Instance.new("TextLabel")
 	ownerLabel.Name = "OwnerName"
-	ownerLabel.Size = UDim2.new(1, 0, 0.55, 0)
+	ownerLabel.Size = UDim2.new(1, 0, 1, 0)
 	ownerLabel.BackgroundTransparency = 1
 	ownerLabel.Text = "BASE " .. baseIdx
 	ownerLabel.TextColor3 = Color3.fromRGB(255, 240, 200)
 	ownerLabel.TextScaled = true
 	ownerLabel.Font = Enum.Font.GothamBold
 	ownerLabel.Parent = board
-
-	local funLabel = Instance.new("TextLabel")
-	funLabel.Name = "MakeFunTag"
-	funLabel.Position = UDim2.new(0, 0, 0.55, 0)
-	funLabel.Size = UDim2.new(1, 0, 0.45, 0)
-	funLabel.BackgroundTransparency = 1
-	funLabel.Text = "make.fun"
-	funLabel.TextColor3 = Color3.fromRGB(140, 220, 255)
-	funLabel.TextScaled = true
-	funLabel.Font = Enum.Font.GothamBold
-	funLabel.Parent = board
 
 	-- Foto kepala pemilik (diisi saat base terisi; Stage 1: placeholder kosong).
 	local headshot = Instance.new("ImageLabel")
@@ -535,11 +678,11 @@ end
 
 local function buildTrees()
 	-- Pohon di tepi conveyor (x = ±20, 24 posisi per sisi), TAPI pohon
-	-- yang z-nya masuk rentang lantai base mana pun TIDAK DIBUAT:
-	-- pohon itu berdiri tepat di depan pintu masuk base (sisi yang
-	-- menghadap conveyor/pusat) dan menghalangi pandangan. Rentang tiap
-	-- baris base = BASE_Z[row] ± 23 (setengah lebar lantai 46).
-	-- Dihapus 16 pohon per sisi; tersisa 8 per sisi (16 total).
+	-- yang z-nya masuk rentang BASE_Z[row] ± TREE_CLEAR_HALF_Z (40)
+	-- TIDAK DIBUAT: pohon itu berdiri di depan pintu masuk base (sisi
+	-- yang menghadap conveyor/pusat) dan menghalangi pandangan.
+	-- Jendela ±40 menutupi [-145, 130] seluruhnya, sehingga tersisa
+	-- hanya z = -150, 136, 149 per sisi (3 per sisi, 6 total).
 	-- Pohon dilewati di loop (bukan disembunyikan / dipindah).
 	local trunkColor = Color3.fromRGB(110, 70, 40)
 	local leafColors = {
@@ -553,7 +696,7 @@ local function buildTrees()
 			local treeZ = -150 + (i - 1) * 13
 			local inFrontOfBase = false
 			for _, baseZ in ipairs(Config.BASE_Z) do
-				if treeZ >= baseZ - 23 and treeZ <= baseZ + 23 then
+				if treeZ >= baseZ - Config.TREE_CLEAR_HALF_Z and treeZ <= baseZ + Config.TREE_CLEAR_HALF_Z then
 					inFrontOfBase = true
 					break
 				end
@@ -1158,6 +1301,21 @@ local function onSellRequest(player, slotIdx)
 	if ok then
 		refreshSlotVisual(baseIdx, slotIdx)
 		refreshPedestalPrompt(baseIdx, slotIdx)
+	end
+end
+
+-- Handler SellCarriedRequest (jual Brainrot yang dibawa): cek
+-- isLoadReady dulu, lalu Economy.sellCarried. Sukses: lepas visual
+-- carried; uang baru dikirim Economy lewat MoneyUpdate.
+local function onSellCarriedRequest(player)
+	if not isLoadReady(player) then
+		notifyLoadNotReady(player)
+		return
+	end
+	local ok, msg = Economy.sellCarried(Players, player, Remotes)
+	Remotes.Notify:FireClient(player, msg)
+	if ok then
+		refreshCarriedVisual(player)
 	end
 end
 
@@ -1991,6 +2149,7 @@ game:BindToClose(onBindToClose)
 -- DebugFlood -> onDebugFlood (hanya set flag DebugPending).
 Remotes.PlaceRequest.OnServerEvent:Connect(onPlaceRequest)
 Remotes.SellRequest.OnServerEvent:Connect(onSellRequest)
+Remotes.SellCarriedRequest.OnServerEvent:Connect(onSellCarriedRequest)
 Remotes.RebirthRequest.OnServerEvent:Connect(onRebirthRequest)
 Remotes.StealRequest.OnServerEvent:Connect(onStealRequest)
 Remotes.LockRequest.OnServerEvent:Connect(onLockRequest)

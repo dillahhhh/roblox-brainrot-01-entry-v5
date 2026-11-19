@@ -5,6 +5,9 @@
 -- StealResult + Notify, atur ProximityPrompt lewat
 -- ProximityPromptService (owner: Taruh/Jual; bukan owner: Curi Brainrot;
 -- peti: Buka Peti), UIScale responsif, BGM Lo-fi Chill A + watchdog.
+-- Fix pasca-uji Studio bos (20 Nov, round 2): tombol "Jual yang
+-- dibawa" (SellCarriedRequest, hanya saat membawa) + lari Shift
+-- (WalkSpeed 28 tahan / 16 lepas, client-side, tanpa stamina).
 -- Client TIDAK PERNAH mengubah uang/state — hanya menampilkan dan
 -- mengirim permintaan via RemoteEvent; server yang memvalidasi semuanya.
 --
@@ -37,6 +40,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local SoundService = game:GetService("SoundService")
+local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -128,6 +132,7 @@ local Remotes = {
 	RebirthRequest = waitRemote("RebirthRequest"),
 	ClaimRequest = waitRemote("ClaimRequest"),
 	TakeRequest = waitRemote("TakeRequest"),
+	SellCarriedRequest = waitRemote("SellCarriedRequest"),
 	DebugFlood = waitRemote("DebugFlood"),
 }
 
@@ -242,6 +247,8 @@ local function updateMoneyPanel()
 	incomeLabel.Text = "+" .. formatMoney(incomePerSec) .. "/dtk"
 end
 
+local sellCarriedButton = nil -- dideklarasi dulu: dipakai updateCarryPanel di bawah
+
 local function updateCarryPanel()
 	if carriedUnknown then
 		carryLabel.Text = "Tangan: tidak diketahui (banjir)"
@@ -258,7 +265,27 @@ local function updateCarryPanel()
 		carryLabel.Text = "Tangan: kosong"
 		carryLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 	end
+	-- Tombol "Jual yang dibawa" hanya muncul saat sedang membawa.
+	if sellCarriedButton ~= nil then
+		sellCarriedButton.Visible = carriedKind ~= nil and not carriedUnknown
+	end
 end
+
+-- Tombol "Jual yang dibawa": di bawah CarryPanel, hanya terlihat
+-- saat sedang membawa Brainrot (diatur updateCarryPanel). Kirim
+-- SellCarriedRequest; server memvalidasi + menjual 50% harga roster.
+sellCarriedButton = makeButton(screenGui, "SellCarriedButton",
+	UDim2.fromOffset(320, 36), UDim2.new(0.5, 0, 1, -148),
+	"Jual yang dibawa (50%)", Color3.fromRGB(40, 130, 70))
+sellCarriedButton.AnchorPoint = Vector2.new(0.5, 1)
+sellCarriedButton.Visible = false
+
+-- Petunjuk lari di pojok kiri bawah (tidak menutupi menu Roblox).
+local sprintHint = makeLabel(screenGui, "SprintHint",
+	UDim2.fromOffset(160, 28), UDim2.new(0, 12, 1, -10),
+	"Shift = Lari", 16, Color3.fromRGB(255, 255, 255))
+sprintHint.AnchorPoint = Vector2.new(0, 1)
+sprintHint.TextXAlignment = Enum.TextXAlignment.Left
 
 -- FloodBanner atas-tengah (posisi y=8, ukuran 520x44, DESIGN.md 7/9).
 -- Teks HUD tidak menutupi pojok kiri atas (tombol menu Roblox).
@@ -538,6 +565,11 @@ trackConnection(Remotes.Notify.OnClientEvent:Connect(function(text)
 		clearCarried()
 		return
 	end
+	-- Jual dari tangan sukses: "Terjual <nama> seharga $... ." -> tangan kosong.
+	if string.sub(text, 1, 8) == "Terjual " then
+		clearCarried()
+		return
+	end
 	-- Rebirth sukses: tangan + slot dihapus, hitungan lokal naik.
 	if string.find(text, "Rebirth berhasil") ~= nil then
 		clearCarried()
@@ -647,6 +679,70 @@ trackConnection(lockButton.MouseButton1Click:Connect(function()
 	Remotes.LockRequest:FireServer(not locked)
 	-- Label berubah hanya saat Notify server tiba (lihat header butir 3).
 end))
+
+-- Tombol "Jual yang dibawa": hanya terlihat saat sedang membawa;
+-- server (Economy.sellCarried) memvalidasi + menjual 50% harga roster.
+trackConnection(sellCarriedButton.MouseButton1Click:Connect(function()
+	if carriedKind ~= nil then
+		Remotes.SellCarriedRequest:FireServer()
+	end
+end))
+
+-- ---------------------------------------------------------------------------
+-- Lari (Shift): client-side saja, server tidak disentuh (tidak ada
+-- validasi WalkSpeed di server). Shift kiri/kanan TAHAN = lari
+-- WalkSpeed 28, lepas = kembali 16. Tanpa stamina. Kecepatan
+-- diterapkan ulang saat karakter (re)spawn; status Shift yang sedang
+-- ditahan diingat supaya respawn di tengah lari tetap lari.
+-- ---------------------------------------------------------------------------
+
+local sprinting = false -- true selama Shift kiri/kanan sedang ditahan
+
+local function applyWalkSpeed()
+	local character = LocalPlayer.Character
+	if character == nil then
+		return
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid == nil then
+		return
+	end
+	if sprinting then
+		humanoid.WalkSpeed = 28
+	else
+		humanoid.WalkSpeed = 16
+	end
+end
+
+trackConnection(UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then
+		return
+	end
+	if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
+		sprinting = true
+		applyWalkSpeed()
+	end
+end))
+
+trackConnection(UserInputService.InputEnded:Connect(function(input, _gameProcessed)
+	if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
+		sprinting = false
+		applyWalkSpeed()
+	end
+end))
+
+trackConnection(LocalPlayer.CharacterAdded:Connect(function(_character)
+	-- Humanoid mungkin belum ada saat event fire; tunggu sebentar.
+	task.spawn(function()
+		local character = LocalPlayer.Character
+		if character == nil then
+			return
+		end
+		character:WaitForChild("Humanoid", 10)
+		applyWalkSpeed()
+	end)
+end))
+applyWalkSpeed()
 
 trackConnection(rebirthButton.MouseButton1Click:Connect(function()
 	showRebirthConfirm()

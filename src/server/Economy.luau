@@ -119,6 +119,31 @@ function Economy.sellSlot(players, player, slotIdx, remotes)
 	return true, "Terjual " .. entry.DisplayName .. " seharga $" .. tostring(price) .. "."
 end
 
+-- Jual Brainrot yang sedang dibawa pemain: 50% harga beli roster
+-- (SELL_RATE, sama seperti sellSlot). Validasi: load siap + Carried
+-- tidak nil. Sukses: Carried dikosongkan, Money += harga jual,
+-- kirim MoneyUpdate. Satu rangkaian sinkron, tanpa yield antara
+-- validasi dan mutasi (kontrak modul, DESIGN.md 16.2).
+function Economy.sellCarried(players, player, remotes)
+	local state = players[player]
+	if not isLoadReady(state) then
+		return false, "Data sedang dimuat, tunggu sebentar."
+	end
+	local item = state.Carried
+	if item == nil then
+		return false, "Kamu tidak sedang membawa Brainrot."
+	end
+	local entry = Config.Roster[item.Kind]
+	if entry == nil then
+		return false, "Brainrot tidak dikenal."
+	end
+	local price = entry.Price * Config.SELL_RATE
+	state.Carried = nil
+	state.Money = state.Money + price
+	fireMoneyUpdate(remotes, player, state)
+	return true, "Terjual " .. entry.DisplayName .. " seharga $" .. tostring(price) .. "."
+end
+
 -- Rebirth: biaya 100000 x 2^Rebirths. Sukses: uang direset ke $100,
 -- semua slot + Carried dihapus, Rebirths + 1,
 -- IncomeMult = 1 + Rebirths x 0,5.

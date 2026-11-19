@@ -128,6 +128,12 @@ Config.CLAIM_RANGE = 12
 Config.SAFE_HALF_X = 28
 Config.SAFE_HALF_Z = 23
 
+-- Jendela bersih pohon di depan base: pohon yang z-nya masuk
+-- BASE_Z[row] ± TREE_CLEAR_HALF_Z tidak dibuat (berdiri di depan
+-- pintu masuk base). Lebar 40 > setengah lantai (23) + jarak pandang,
+-- sehingga yang tersisa hanya z = -150, 136, 149 per sisi.
+Config.TREE_CLEAR_HALF_Z = 40
+
 -- Layout base: 8 base, 4 kiri (x = -68) + 4 kanan (x = +68).
 Config.BASE_X = { -68, 68 }
 Config.BASE_Z = { 90, 25, -40, -105 }
