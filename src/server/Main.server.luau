@@ -1491,8 +1491,9 @@ end
 -- Barrier lock (DESIGN.md 19.1, Stage 3): Touched di tiap part kaca
 -- lock tiap base. Pemain BUKAN pemilik yang menyentuh saat base
 -- terkunci di-teleport keluar ke (DoorX +/- 6, 4, zCenter): base kiri
--- (xCenter -68, DoorX -41) -> x = -47; base kanan (xCenter +68,
--- DoorX +41) -> x = +47. Pemilik SELALU lolos (tidak di-teleport).
+-- (xCenter -68, DoorX -41) -> x = -35; base kanan (xCenter +68,
+-- DoorX +41) -> x = +35. Target di LUAR lantai base (kiri [-96,-40],
+-- kanan [40,96]) ke arah conveyor. Pemilik SELALU lolos (tidak di-teleport).
 -- Saat tidak terkunci barrier tidak menghalangi (CanCollide false,
 -- Transparency 1); handler tetap memeriksa isLocked.
 local LockTeleportAt = {} -- [Player] -> os.clock() teleport terakhir (debounce 1 detik)
@@ -1504,7 +1505,7 @@ local function connectLockBarriers()
 			local row = (baseIdx <= 4) and baseIdx or (baseIdx - 4)
 			local zCenter = Config.BASE_Z[row]
 			local doorX = (xCenter < 0) and (xCenter + 27) or (xCenter - 27)
-			local targetX = (xCenter < 0) and (doorX - 6) or (doorX + 6)
+			local targetX = (xCenter < 0) and (doorX + 6) or (doorX - 6)
 			for _, glass in ipairs(visuals.GlassParts) do
 				glass.Touched:Connect(function(otherPart)
 					local character = otherPart.Parent
