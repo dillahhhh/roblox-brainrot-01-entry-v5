@@ -9,6 +9,7 @@
 -- mutasi anti-spam saat gagal: DESIGN.md 18.6.
 
 local Config = require(game:GetService("ReplicatedStorage").Shared.Config)
+local RunService = game:GetService("RunService")
 
 local Steal = {}
 
@@ -58,9 +59,12 @@ function Steal.trySteal(players, thief, baseIdx, slotIdx, remotes, world)
 	end
 
 	-- Langkah 2: state pencuri ada dan LoadStatus "ok"/"new".
+	-- Fallback KHUSUS Studio (sama seperti Main.isLoadReady):
+	-- IsStudio() + "failed" juga siap; di live tidak terpicu.
 	local thiefState = players[thief]
 	if thiefState == nil
-		or (thiefState.LoadStatus ~= "ok" and thiefState.LoadStatus ~= "new") then
+		or (thiefState.LoadStatus ~= "ok" and thiefState.LoadStatus ~= "new"
+			and not (RunService:IsStudio() and thiefState.LoadStatus == "failed")) then
 		return deny("data belum dimuat")
 	end
 

@@ -6,12 +6,23 @@
 -- di dalam operasi atomik.
 
 local Config = require(game:GetService("ReplicatedStorage").Shared.Config)
+local RunService = game:GetService("RunService")
 
 local Economy = {}
 
 -- Load gating (DESIGN.md 16.5): hanya "ok"/"new" boleh aksi gameplay.
+-- Fallback KHUSUS Studio (sama seperti Main.isLoadReady): di Studio
+-- lokal DataStore gagal (place belum di-publish) dan LoadStatus jadi
+-- "failed" — sesi tetap boleh bermain. Di live IsStudio() false,
+-- jadi fallback ini tidak pernah terpicu. Penjaga save TIDAK berubah.
 local function isLoadReady(state)
-	return state ~= nil and (state.LoadStatus == "ok" or state.LoadStatus == "new")
+	if state == nil then
+		return false
+	end
+	if state.LoadStatus == "ok" or state.LoadStatus == "new" then
+		return true
+	end
+	return RunService:IsStudio() and state.LoadStatus == "failed"
 end
 
 -- Total income/detik pemain: jumlah income semua slot terisi x IncomeMult.

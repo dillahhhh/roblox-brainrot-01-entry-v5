@@ -31,6 +31,7 @@
 -- data pemain.
 
 local Config = require(game:GetService("ReplicatedStorage").Shared.Config)
+local RunService = game:GetService("RunService")
 
 local Flood = {}
 
@@ -329,9 +330,12 @@ function Flood.claimCrate(players, crates, player, crateId, newUid)
 	end
 
 	-- Langkah 2: state pemain ada dan load siap.
+	-- Fallback KHUSUS Studio (sama seperti Main.isLoadReady):
+	-- IsStudio() + "failed" juga siap; di live tidak terpicu.
 	local state = players[player]
 	if state == nil
-		or (state.LoadStatus ~= "ok" and state.LoadStatus ~= "new") then
+		or (state.LoadStatus ~= "ok" and state.LoadStatus ~= "new"
+			and not (RunService:IsStudio() and state.LoadStatus == "failed")) then
 		return deny("data belum dimuat")
 	end
 
