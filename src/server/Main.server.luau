@@ -126,7 +126,8 @@ end
 
 -- ---------------------------------------------------------------------------
 -- Bangun dunia 3D (runtime). Urutan: lighting -> terrain -> conveyor ->
--- plaza + SpawnLocation -> bases -> gates -> forest -> trees -> lamps.
+-- plaza + SpawnLocation -> bases -> gates -> forest -> boundary walls ->
+-- trees -> lamps -> lanterns -> stalls.
 -- ---------------------------------------------------------------------------
 
 local function makePart(name, size, position, material, color)
@@ -275,7 +276,7 @@ local function buildOneBase(baseIdx, xCenter, zCenter)
 	-- tema game): rumah joglo/limasan yang TINGGI. Dinding kayu hangat
 	-- 12 stud (y 0.8-12.8, dulu 8) dengan bukaan jendela, atap
 	-- limasan 2 bidang miring + bubungan + overhang, teras depan
-	-- (kanopi + tiang + keset), kusen pintu depan, trim warna hangat.
+	-- (kanopi + tiang), kusen pintu depan, trim warna hangat.
 	-- Depan TERBUKA menghadap pusat/conveyor. ANGKA ATAP (cek nyata):
 	-- dinding atas y 12.8, lis atap (eave) y 12.6, bubungan y 18.2,
 	-- balok bubungan atas y 18.7, hiasan ujung bubungan atas y 19.7 —
@@ -363,8 +364,13 @@ local function buildOneBase(baseIdx, xCenter, zCenter)
 		trimColor
 	)
 	-- Teras depan: lantai teras rata dengan lantai base (atas y 0.8),
-	-- menjorok 6 stud ke arah conveyor; keset merah di depan pintu;
-	-- 2 tiang teras + kanopi miring di atasnya.
+	-- menjorok 6 stud ke arah conveyor; 2 tiang teras + kanopi miring
+	-- di atasnya. FIX ROUND 6 (20 Nov, perintah bos "hiasan depan base
+	-- ilangin aja, yang warna warni"): keset merah di depan pintu
+	-- DIHAPUS — itu satu-satunya hiasan warna-warni non-struktural di
+	-- depan base. Teras, tiang teras, kanopi, tiang joglo, balok, dan
+	-- kusen pintu (semua balok/kayu) DIBIARKAN, sesuai "kalo yang ada
+	-- baloknya diemin".
 	local terrace = makePart(
 		"BaseTerrace" .. baseIdx,
 		Vector3.new(6, 0.8, 30),
@@ -373,14 +379,6 @@ local function buildOneBase(baseIdx, xCenter, zCenter)
 		Color3.fromRGB(140, 95, 55)
 	)
 	terrace.CanCollide = true
-	local doormat = makePart(
-		"BaseDoormat" .. baseIdx,
-		Vector3.new(4, 0.15, 6),
-		Vector3.new(frontX + inward * 3, 0.88, zCenter),
-		Enum.Material.SmoothPlastic,
-		Color3.fromRGB(180, 50, 50)
-	)
-	doormat.CanCollide = false
 	for _, sideSign in ipairs({ -1, 1 }) do
 		makePart(
 			"BaseTerracePillar" .. baseIdx,
@@ -927,6 +925,45 @@ local function buildStalls()
 	end
 end
 
+-- Dinding pembatas tepi map (FIX ROUND 6, 20 Nov — perintah bos
+-- "bikin mentok biar ga jatoh pas ke ujung map"): 4 dinding
+-- TRANSPARAN (Transparency 1, tidak mengubah visual map sama sekali),
+-- CanCollide true, tinggi 20 stud (lompat pemain ~7 stud, tidak bisa
+-- dilompati), di garis depan hutan (x = ±158, z = ±196 — konstanta
+-- Config.BOUNDARY_WALL_*). Pemain mentok di tepi area main sebelum
+-- mencapai tepi terrain (x ±170, z ±210); pagar kayu 3 stud yang lama
+-- (buildGates) gampang dilompati, dinding ini yang menahan.
+-- Tidak menghalangi apa pun di dalam area main: conveyor, base,
+-- plaza, jalan, kios, dan semua spawn peti ada di dalam dinding.
+-- Dinding air flood (WaterWall, CanCollide false, bergerak z -160..160)
+-- lewat di dalam area ini tanpa bersentuhan dengan dinding pembatas.
+local function buildBoundaryWalls()
+	local halfX = Config.BOUNDARY_WALL_HALF_X
+	local halfZ = Config.BOUNDARY_WALL_HALF_Z
+	local height = Config.BOUNDARY_WALL_HEIGHT
+	local thick = Config.BOUNDARY_WALL_THICKNESS
+	local centerY = height / 2
+	local function wall(name, size, position)
+		local part = Instance.new("Part")
+		part.Name = name
+		part.Size = size
+		part.Position = position
+		part.Material = Enum.Material.SmoothPlastic
+		part.Color = Color3.fromRGB(255, 255, 255)
+		part.Transparency = 1
+		part.Anchored = true
+		part.CanCollide = true
+		part.Parent = Workspace
+		return part
+	end
+	-- Barat/timur: sepanjang z (tambah `thick` supaya sudut tertutup).
+	wall("BoundaryWallW", Vector3.new(thick, height, 2 * halfZ + thick), Vector3.new(-halfX, centerY, 0))
+	wall("BoundaryWallE", Vector3.new(thick, height, 2 * halfZ + thick), Vector3.new(halfX, centerY, 0))
+	-- Utara/selatan: sepanjang x.
+	wall("BoundaryWallN", Vector3.new(2 * halfX + thick, height, thick), Vector3.new(0, centerY, -halfZ))
+	wall("BoundaryWallS", Vector3.new(2 * halfX + thick, height, thick), Vector3.new(0, centerY, halfZ))
+end
+
 local function buildWorld()
 	setupLighting()
 	buildTerrain()
@@ -935,6 +972,7 @@ local function buildWorld()
 	buildBases()
 	buildGates()
 	buildForest()
+	buildBoundaryWalls()
 	buildTrees()
 	buildLamps()
 	buildLanterns()
@@ -1740,9 +1778,17 @@ local function createCrateModel(crate)
 	local model = Instance.new("Model")
 	model.Name = "Crate_" .. crate.Id
 
+	-- FIX ROUND 6 (20 Nov, perintah bos "susah buka box tsunami"):
+	-- kotak peti dibesarkan 3x2x3 -> 4x2.5x4 dan label diangkat,
+	-- supaya peti mudah dilihat + prompt "Buka Peti" mudah ketemu
+	-- dari jarak wajar. Jangkauan klaimnya sendiri naik via
+	-- Config.CLAIM_RANGE 12 -> 20 (prompt di bawah + validasi
+	-- server Flood.claimCrate sama-sama membaca konstanta itu).
+	-- Aturan spawn peti (>= 3 per siklus), isi/hadiah, timing
+	-- flood, dan validasi klaim lain TIDAK berubah.
 	local box = Instance.new("Part")
 	box.Name = "CrateBox"
-	box.Size = Vector3.new(3, 2, 3)
+	box.Size = Vector3.new(4, 2.5, 4)
 	box.Position = crate.Position
 	box.Material = Enum.Material.Wood
 	box.Color = boxColor
@@ -1751,12 +1797,13 @@ local function createCrateModel(crate)
 	box.Parent = model
 
 	-- Brainrot di dalam peti, di atas kotak (skala
-	-- Config.BRAINROT_SCALE_CRATE = 2.1).
+	-- Config.BRAINROT_SCALE_CRATE = 2.1). Kotak kini 2.5 tinggi
+	-- (atas y = posisi + 1.25), jadi Brainrot diangkat ke +2.5.
 	local brainrotKind = crate.BrainrotKind or crate.Kind
 	local top = createBrainrotModel(brainrotKind, Config.BRAINROT_SCALE_CRATE)
 	if top then
 		top.Parent = model
-		top:PivotTo(CFrame.new(crate.Position + Vector3.new(0, 2, 0)))
+		top:PivotTo(CFrame.new(crate.Position + Vector3.new(0, 2.5, 0)))
 	end
 
 	-- Label: kelas peti + nama + rarity Brainrot di dalamnya.
@@ -1768,8 +1815,10 @@ local function createCrateModel(crate)
 	local label = Instance.new("BillboardGui")
 	label.Name = "CrateLabel"
 	label.Size = UDim2.fromOffset(200, 64)
-	label.StudsOffsetWorldSpace = Vector3.new(0, 3.5, 0)
-	label.AlwaysOnTop = false
+	label.StudsOffsetWorldSpace = Vector3.new(0, 4.5, 0)
+	label.AlwaysOnTop = true -- FIX ROUND 6: label peti selalu terlihat
+	-- (tidak tertutup model Brainrot di atas kotak) supaya peti
+	-- gampang ditemukan saat Scramble.
 	label.LightInfluence = 0
 	label.Parent = box
 	local text = Instance.new("TextLabel")

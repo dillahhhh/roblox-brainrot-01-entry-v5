@@ -122,13 +122,37 @@ Config.SAVE_MAX_ATTEMPTS = 2
 Config.STEAL_COOLDOWN = 5
 Config.STEAL_ATTEMPT_COOLDOWN = 1
 Config.STEAL_RANGE = 12
-Config.CLAIM_RANGE = 12
+-- FIX ROUND 6 (20 Nov): CLAIM_RANGE 12 -> 20. Peti banjir susah
+-- dibuka: kotaknya kecil (3x2x3) di permukaan tanah dan prompt
+-- "Buka Peti" hanya muncul dalam 12 stud, jadi pemain harus
+-- merapat betul-betul ke peti yang kecil itu. 20 stud = prompt
+-- muncul + validasi server Flood.claimCrate lolos dari jarak
+-- wajar; keduanya membaca konstanta ini, jadi prompt dan server
+-- tetap konsisten. STEAL_RANGE (curi, 12) dan TAKE_RANGE (ambil
+-- conveyor, 24) TIDAK berubah.
+Config.CLAIM_RANGE = 20
 
 -- Ambil Brainrot dari conveyor (FIX ROUND 5, 20 Nov): jangkauan ambil
 -- khusus 24 stud (lebih jauh dari STEAL_RANGE 12) agar kedua jalur
 -- conveyor (x = ±7.5) terjangkau dari kedua sisi conveyor. STEAL_RANGE
--- (curi dari pedestal) dan CLAIM_RANGE (peti) TIDAK berubah.
+-- (curi dari pedestal) TIDAK berubah; CLAIM_RANGE naik 12 -> 20 di
+-- FIX ROUND 6 (lihat di atas).
 Config.TAKE_RANGE = 24
+
+-- Dinding pembatas tepi map (FIX ROUND 6, 20 Nov): pemain bisa jalan
+-- sampai ujung terrain dan jatuh. 4 dinding transparan (Transparency 1,
+-- CanCollide true) di garis depan hutan — x = ±158 (garis depan hutan
+-- barat/timur), z = ±196 (garis depan hutan utara/selatan) — jadi
+-- pemain mentok sebelum mencapai tepi terrain (x ±170, z ±210).
+-- Tinggi 20 stud: lompat pemain ~7 stud, tidak bisa dilompati.
+-- Di dalam dinding: conveyor (z ±160), base (x ±96), plaza
+-- (z 127.5-182.5), kios (z ±188), dan semua spawn peti — tidak ada
+-- yang terhalangi. Dinding air flood bergerak di dalam area ini
+-- (z -160..160) dan tidak bersentuhan dengan dinding pembatas.
+Config.BOUNDARY_WALL_HALF_X = 158
+Config.BOUNDARY_WALL_HALF_Z = 196
+Config.BOUNDARY_WALL_HEIGHT = 20
+Config.BOUNDARY_WALL_THICKNESS = 1
 
 -- Skala visual Brainrot (FIX ROUND 5, 20 Nov): +30% dari sebelumnya
 -- (conveyor/pedestal 2.0 -> 2.6, dibawa 1.4 -> 1.8, atas peti 1.6 -> 2.1).
