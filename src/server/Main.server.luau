@@ -3005,6 +3005,11 @@ local function floodTick()
 			local state = Players[player]
 			if state ~= nil and state.Carried == nil then
 				destroyCarriedModel(player)
+				-- FIX ROUND 14: beri tahu pemainnya — tanpa Notify ini
+				-- client tetap mengira masih membawa (CarryPanel +
+				-- tombol "Jual yang dibawa" tetap tampil) padahal
+				-- server Carried-nya sudah hilang tersapu banjir.
+				Remotes.Notify:FireClient(player, "Brainrot yang kamu bawa tersapu banjir!")
 			end
 		end
 	end

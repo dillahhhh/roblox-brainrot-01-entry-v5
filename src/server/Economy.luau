@@ -126,7 +126,12 @@ function Economy.sellSlot(players, player, slotIdx, remotes)
 	state.Slots[slotIdx] = nil
 	state.Money = state.Money + price
 	fireMoneyUpdate(remotes, player, state)
-	return true, "Terjual " .. entry.DisplayName .. " seharga $" .. tostring(price) .. "."
+	-- FIX ROUND 14: pesan dibedakan dari jual tangan ("Terjual ...").
+	-- Client membersihkan carried hanya untuk awalan "Terjual ", jadi
+	-- jual dari base TIDAK boleh memakai awalan itu — kalau tidak,
+	-- pemain yang sedang membawa Brainrot lain akan client kira
+	-- tangannya kosong padahal server Carried-nya masih ada.
+	return true, "Dijual dari base " .. entry.DisplayName .. " seharga $" .. tostring(price) .. "."
 end
 
 -- Jual Brainrot yang sedang dibawa pemain: 50% harga beli roster

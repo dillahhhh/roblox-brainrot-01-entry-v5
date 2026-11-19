@@ -833,7 +833,17 @@ trackConnection(Remotes.Notify.OnClientEvent:Connect(function(text)
 		return
 	end
 	-- Jual dari tangan sukses: "Terjual <nama> seharga $... ." -> tangan kosong.
+	-- FIX ROUND 14: aturan ini HANYA untuk jual tangan. Jual dari
+	-- pedestal kini memakai awalan "Dijual dari base " (Economy.sellSlot)
+	-- dan TIDAK boleh membersihkan carried — pemain bisa saja sedang
+	-- membawa Brainrot lain saat menjual isi base.
 	if string.sub(text, 1, 8) == "Terjual " then
+		clearCarried()
+		return
+	end
+	-- FIX ROUND 14: bawaan tersapu banjir — server memberitahu lewat
+	-- Notify ini (floodTick), supaya pelacakan lokal ikut dibersihkan.
+	if string.find(text, "tersapu banjir") ~= nil then
 		clearCarried()
 		return
 	end
