@@ -1741,6 +1741,13 @@ createBrainrotModel = function(kind, scale)
 		Vector3.new(2.4, 2.8, 2.4) * s, Vector3.new(0, 1.4 * s, 0),
 		entry.Color, Enum.Material.Neon, Enum.PartType.Ball)
 	auraShell.Transparency = Config.BRAINROT_AURA_TRANSPARENCY
+	-- FIX ROUND 10 (20 Nov): aura TIDAK BOLEH ikut raycast.
+	-- Bola aura Neon membungkus seluruh model, jadi sinar
+	-- line-of-sight ProximityPrompt ("Ambil" di conveyor, "Buka
+	-- Peti" di peti) menembus aura dulu -> prompt selalu
+	-- tersembunyi sejak aura ditambahkan di round 7. CanQuery =
+	-- false membuat glow visual murni, jalur LOS ke Body bebas.
+	auraShell.CanQuery = false
 	local auraLight = Instance.new("PointLight")
 	auraLight.Name = "AuraLight"
 	auraLight.Color = entry.Color
@@ -2157,6 +2164,13 @@ local function createConveyorModel(item)
 	prompt.ObjectText = (rosterEntry and rosterEntry.DisplayName) or item.Kind
 	prompt.HoldDuration = 0
 	prompt.MaxActivationDistance = Config.TAKE_RANGE -- FIX ROUND 5: 24 stud, kedua jalur terjangkau dari kedua sisi
+	-- FIX ROUND 10 (20 Nov): RequiresLineOfSight = false. Prompt
+	-- menempel di Body modelnya sendiri, tapi sinar LOS dari
+	-- kamera menembus bola AuraShell (Neon, membungkus model)
+	-- karena Roblox hanya mengecualikan part INDUK prompt dari
+	-- cek LOS, bukan bagian lain model yang sama — prompt "Ambil"
+	-- tidak pernah muncul sejak aura ditambahkan di round 7.
+	prompt.RequiresLineOfSight = false
 	prompt:SetAttribute("PromptKind", "Conveyor")
 	prompt:SetAttribute("Uid", item.Uid)
 	prompt.Parent = model.PrimaryPart
@@ -2318,6 +2332,11 @@ local function createCrateModel(crate)
 	prompt.ObjectText = "Peti " .. crate.Kind
 	prompt.HoldDuration = 0.5
 	prompt.MaxActivationDistance = Config.CLAIM_RANGE
+	-- FIX ROUND 10 (20 Nov): RequiresLineOfSight = false.
+	-- Model Brainrot + bola AuraShell duduk DI ATAS box peti,
+	-- sinar LOS ke box menembus aura -> prompt "Buka Peti" ikut
+	-- tersembunyi sejak round 7. Alasan sama dengan prompt "Ambil".
+	prompt.RequiresLineOfSight = false
 	prompt:SetAttribute("CrateId", crate.Id)
 	prompt.Parent = box
 
