@@ -58,6 +58,7 @@ local localRebirths = 0 -- hitungan lokal, informatif (lihat header)
 local floodPhase = "Idle"
 local floodRemaining = 0 -- sisa detik fase berjalan (dari FloodEvent)
 local muted = false
+local collected = {} -- kind -> true, dari server via IndexUpdate (FITUR INDEX)
 
 local alive = true
 local connections = {}
@@ -125,6 +126,7 @@ local Remotes = {
 	MoneyUpdate = waitRemote("MoneyUpdate"),
 	StealResult = waitRemote("StealResult"),
 	Notify = waitRemote("Notify"),
+	IndexUpdate = waitRemote("IndexUpdate"),
 	StealRequest = waitRemote("StealRequest"),
 	PlaceRequest = waitRemote("PlaceRequest"),
 	SellRequest = waitRemote("SellRequest"),
@@ -365,11 +367,11 @@ local function showToast(text, color)
 	end)
 end
 
--- Tombol aksi di sisi kanan tengah: Lock, Rebirth, Debug Flood.
+-- Tombol aksi di sisi kanan tengah: Lock, Rebirth, Indeks, Debug Flood.
 local actionFrame = Instance.new("Frame")
 actionFrame.Name = "ActionButtons"
-actionFrame.Size = UDim2.fromOffset(180, 150)
-actionFrame.Position = UDim2.new(1, -12, 0.5, -75)
+actionFrame.Size = UDim2.fromOffset(180, 190)
+actionFrame.Position = UDim2.new(1, -12, 0.5, -95)
 actionFrame.AnchorPoint = Vector2.new(1, 0)
 actionFrame.BackgroundTransparency = 1
 actionFrame.Parent = screenGui
@@ -384,10 +386,124 @@ local lockButton = makeButton(actionFrame, "LockButton",
 local rebirthButton = makeButton(actionFrame, "RebirthButton",
 	UDim2.fromOffset(180, 44), UDim2.new(0, 0, 0, 0),
 	"Rebirth ($100.000)", Color3.fromRGB(140, 60, 160))
+local indexButton = makeButton(actionFrame, "IndexButton",
+	UDim2.fromOffset(180, 44), UDim2.new(0, 0, 0, 0),
+	"Indeks (0/35)", Color3.fromRGB(40, 90, 160))
 local debugButton = makeButton(actionFrame, "DebugFloodButton",
 	UDim2.fromOffset(180, 30), UDim2.new(0, 0, 0, 0),
 	"Debug Flood", Color3.fromRGB(90, 90, 90))
 debugButton.TextSize = 15
+
+-- ---------------------------------------------------------------------------
+-- Panel Indeks koleksi (FITUR INDEX, 20 Nov, aturan bos): sel kosong
+-- ("???", gelap) sebelum pemain pernah dapat kind itu; sel menyala
+-- (nama + harga + income, latar warna rarity digelapkan) setelah
+-- pernah dapat. Grid 7 baris (tier) x 5 kolom, header hitung "X/35".
+-- Data SATU-SATUNYA dari server (IndexUpdate); client tidak pernah
+-- menebak koleksi sendiri. Panel dibangun dari Config.RosterOrder
+-- supaya urutannya sama dengan server.
+-- ---------------------------------------------------------------------------
+
+local indexOpen = false
+local indexCells = {} -- kind -> {frame, nameLabel, priceLabel, entry}
+local indexCountLabel = nil
+
+local indexPanel = makeFrame(screenGui, "IndexPanel",
+	UDim2.fromOffset(640, 470), UDim2.new(0.5, 0, 0.5, 0),
+	Vector2.new(0.5, 0.5), Color3.fromRGB(20, 20, 28))
+indexPanel.Visible = false
+local indexTitle = makeLabel(indexPanel, "IndexTitle",
+	UDim2.new(1, -160, 0, 40), UDim2.new(0, 12, 0, 4),
+	"INDEKS BRAINROT", 24, Color3.fromRGB(255, 255, 255))
+indexTitle.TextXAlignment = Enum.TextXAlignment.Left
+indexCountLabel = makeLabel(indexPanel, "IndexCount",
+	UDim2.fromOffset(96, 40), UDim2.new(1, -148, 0, 4),
+	"0/35", 22, Color3.fromRGB(255, 225, 90))
+indexCountLabel.TextXAlignment = Enum.TextXAlignment.Right
+local indexClose = makeButton(indexPanel, "IndexClose",
+	UDim2.fromOffset(36, 36), UDim2.new(1, -8, 0, 6),
+	"X", Color3.fromRGB(160, 40, 40))
+indexClose.AnchorPoint = Vector2.new(1, 0)
+indexClose.TextSize = 18
+
+local function darken(color, factor)
+	return Color3.new(color.R * factor, color.G * factor, color.B * factor)
+end
+
+local INDEX_TIERS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Ultra Rare" }
+local kindsByTier = {}
+for _, tier in ipairs(INDEX_TIERS) do
+	kindsByTier[tier] = {}
+end
+for _, kind in ipairs(Config.RosterOrder) do
+	local entry = Config.Roster[kind]
+	if entry ~= nil then
+		table.insert(kindsByTier[entry.Rarity], kind)
+	end
+end
+
+do
+	local rowY = 52
+	for _, tier in ipairs(INDEX_TIERS) do
+		local tierKinds = kindsByTier[tier]
+		local tierColor = Color3.fromRGB(255, 255, 255)
+		if #tierKinds > 0 then
+			tierColor = Config.Roster[tierKinds[1]].Color
+		end
+		local tierLabel = makeLabel(indexPanel, "Tier_" .. tier,
+			UDim2.fromOffset(84, 54), UDim2.new(0, 12, 0, rowY),
+			tier, 13, tierColor)
+		tierLabel.TextXAlignment = Enum.TextXAlignment.Left
+		for col, kind in ipairs(tierKinds) do
+			local entry = Config.Roster[kind]
+			local cellX = 12 + 84 + 6 + (col - 1) * (100 + 6)
+			local cell = makeFrame(indexPanel, "Cell_" .. kind,
+				UDim2.fromOffset(100, 54), UDim2.new(0, cellX, 0, rowY),
+				Vector2.new(0, 0), Color3.fromRGB(35, 35, 45))
+			local nameLabel = makeLabel(cell, "CellName",
+				UDim2.new(1, -8, 0, 30), UDim2.new(0, 4, 0, 2),
+				"???", 13, Color3.fromRGB(130, 130, 140))
+			nameLabel.TextXAlignment = Enum.TextXAlignment.Center
+			local priceLabel = makeLabel(cell, "CellPrice",
+				UDim2.new(1, -8, 0, 18), UDim2.new(0, 4, 0, 32),
+				"", 11, Color3.fromRGB(200, 200, 200))
+			priceLabel.TextXAlignment = Enum.TextXAlignment.Center
+			indexCells[kind] = { frame = cell, nameLabel = nameLabel, priceLabel = priceLabel, entry = entry }
+		end
+		rowY = rowY + 54 + 6
+	end
+end
+
+local function refreshIndexPanel()
+	local count = 0
+	for kind, cell in pairs(indexCells) do
+		local entry = cell.entry
+		if collected[kind] == true then
+			count = count + 1
+			cell.frame.BackgroundColor3 = darken(entry.Color, 0.55)
+			cell.nameLabel.Text = entry.DisplayName
+			cell.nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+			cell.priceLabel.Text = formatMoney(entry.Price) .. " • " .. formatMoney(entry.Income) .. "/dtk"
+			cell.priceLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
+		else
+			cell.frame.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+			cell.nameLabel.Text = "???"
+			cell.nameLabel.TextColor3 = Color3.fromRGB(130, 130, 140)
+			cell.priceLabel.Text = ""
+		end
+	end
+	local total = #Config.RosterOrder
+	indexCountLabel.Text = tostring(count) .. "/" .. tostring(total)
+	indexButton.Text = "Indeks (" .. tostring(count) .. "/" .. tostring(total) .. ")"
+end
+
+local function setIndexOpen(open)
+	indexOpen = open
+	indexPanel.Visible = open
+	if open then
+		refreshIndexPanel()
+	end
+end
 
 -- Tombol mute kecil di pojok kanan atas (menu Roblox di kiri atas aman).
 local muteButton = makeButton(screenGui, "MuteButton",
@@ -437,6 +553,7 @@ updateCarryPanel()
 updateFloodBanner()
 updateLockButton()
 updateRebirthButton()
+refreshIndexPanel()
 
 -- ---------------------------------------------------------------------------
 -- BGM: Lo-fi Chill A (asset 9043887091, DESIGN.md 9), loop + watchdog.
@@ -547,6 +664,23 @@ trackConnection(Remotes.StealResult.OnClientEvent:Connect(function(success, mess
 			showToast(message, Color3.fromRGB(255, 150, 150))
 		end
 	end
+end))
+
+trackConnection(Remotes.IndexUpdate.OnClientEvent:Connect(function(kinds)
+	-- FITUR INDEX: server mengirim set Collected LENGKAP (array kind
+	-- urutan RosterOrder). Ganti seluruh set lokal, lalu refresh —
+	-- sel yang baru didapat langsung menyala tanpa buka-tutup panel.
+	if type(kinds) ~= "table" then
+		return
+	end
+	local newCollected = {}
+	for _, kind in ipairs(kinds) do
+		if type(kind) == "string" and Config.Roster[kind] ~= nil then
+			newCollected[kind] = true
+		end
+	end
+	collected = newCollected
+	refreshIndexPanel()
 end))
 
 trackConnection(Remotes.Notify.OnClientEvent:Connect(function(text)
@@ -686,6 +820,15 @@ trackConnection(sellCarriedButton.MouseButton1Click:Connect(function()
 	if carriedKind ~= nil then
 		Remotes.SellCarriedRequest:FireServer()
 	end
+end))
+
+-- Tombol "Indeks": buka/tutup panel Indeks koleksi (FITUR INDEX).
+trackConnection(indexButton.MouseButton1Click:Connect(function()
+	setIndexOpen(not indexOpen)
+end))
+
+trackConnection(indexClose.MouseButton1Click:Connect(function()
+	setIndexOpen(false)
 end))
 
 -- ---------------------------------------------------------------------------

@@ -79,6 +79,34 @@ end
 -- Field tambahan yang tidak dikenal diabaikan (forward-compatible).
 -- ---------------------------------------------------------------------------
 
+-- Normalisasi Collected (FITUR INDEX, 20 Nov): field baru; save lama
+-- tidak punya field ini (nil -> {}). Entri bukan string / kind tak
+-- dikenal dibuang diam-diam; key roster lama dipetakan dulu (seperti
+-- remapKinds). Hasil selalu array urutan RosterOrder (deterministik)
+-- tanpa duplikat. Dipanggil di migrate + loadData SEBELUM validasi.
+local function normalizeCollected(data)
+	local raw = data.Collected
+	local seen = {}
+	if type(raw) == "table" then
+		for _, kind in ipairs(raw) do
+			if type(kind) == "string" then
+				local mapped = LEGACY_KIND_MAP[kind] or kind
+				if Config.Roster[mapped] ~= nil then
+					seen[mapped] = true
+				end
+			end
+		end
+	end
+	local ordered = {}
+	for _, kind in ipairs(Config.RosterOrder) do
+		if seen[kind] then
+			table.insert(ordered, kind)
+		end
+	end
+	data.Collected = ordered
+	return ordered
+end
+
 local function isValidItem(item)
 	if type(item) ~= "table" then
 		return false
@@ -143,6 +171,17 @@ local function validateData(data)
 			return false, "UID duplikat: " .. carried.Uid
 		end
 	end
+	local collected = data.Collected
+	if collected ~= nil then
+		if type(collected) ~= "table" then
+			return false, "Collected bukan table"
+		end
+		for _, kind in ipairs(collected) do
+			if type(kind) ~= "string" or Config.Roster[kind] == nil then
+				return false, "Collected berisi kind tidak valid: " .. tostring(kind)
+			end
+		end
+	end
 	return true
 end
 
@@ -175,6 +214,8 @@ function DataStore.migrate(data)
 	-- LEGACY_KIND_MAP di atas) — data legacy Version 0 yang
 	-- menyimpan key lama ikut termigrasi ke key baru.
 	remapKinds(out)
+	-- FITUR INDEX: save lama tanpa Collected -> array kosong.
+	normalizeCollected(out)
 	out.Version = Config.DATA_VERSION
 	return out
 end
@@ -242,6 +283,9 @@ function DataStore.loadData(player)
 	-- v5) tetap bisa di-load, dan satu Kind tak dikenal tidak
 	-- membuat seluruh load "corrupt".
 	remapKinds(data)
+	-- FITUR INDEX: normalisasi Collected SEBELUM validasi — save
+	-- lama (Version 1, sebelum Index) tanpa field ini tetap valid.
+	normalizeCollected(data)
 	local valid, reason = validateData(data)
 	if not valid then
 		warn("[DataStore] loadData: data corrupt untuk " .. player.Name .. ": " .. tostring(reason))
@@ -273,6 +317,16 @@ local function buildPayload(state, expectedRevision, sessionId)
 	if state.Carried ~= nil then
 		carried = { Uid = state.Carried.Uid, Kind = state.Carried.Kind }
 	end
+	-- FITUR INDEX: Collected (set kind -> true) disimpan sebagai
+	-- array urutan RosterOrder; save lama tidak punya field ini.
+	local collected = {}
+	if type(state.Collected) == "table" then
+		for _, kind in ipairs(Config.RosterOrder) do
+			if state.Collected[kind] == true then
+				table.insert(collected, kind)
+			end
+		end
+	end
 	return {
 		Version = Config.DATA_VERSION,
 		Revision = expectedRevision,
@@ -281,6 +335,7 @@ local function buildPayload(state, expectedRevision, sessionId)
 		Rebirths = state.Rebirths,
 		Slots = slots,
 		Carried = carried,
+		Collected = collected,
 	}
 end
 

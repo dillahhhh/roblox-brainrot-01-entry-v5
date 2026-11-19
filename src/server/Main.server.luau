@@ -100,6 +100,7 @@ local REMOTE_NAMES = {
 	"MoneyUpdate",
 	"StealResult",
 	"Notify",
+	"IndexUpdate", -- FITUR INDEX: server -> client, set Collected lengkap
 	"StealRequest",
 	"PlaceRequest",
 	"SellRequest",
@@ -1241,17 +1242,17 @@ end
 -- berubah — hanya urutan deklarasi.
 local createBrainrotModel
 
--- Meja pameran di sebelah spawn (FIX ROUND 8, 20 Nov): satu meja
--- panjang di TIMUR spawn (pusat x = 32, z = 168 — sejajar spawn,
--- 11 stud di timur tepi SpawnLocation x = 8), memajang KE-7 jenis
--- Brainrot (Config.RosterOrder) dalam 2 baris (depan 4, belakang
--- 3) di atas alas meja. Model dari createBrainrotModel yang sama
--- — bentuk + aura rarity + label nama identik dengan yang di
--- conveyor/pedestal. DEKORASI SAJA: model statis (Anchored, dari
--- createBrainrotModel), TANPA ProximityPrompt, TANPA RemoteEvent,
--- TIDAK masuk ekonomi/conveyor/pedestal/peti, tidak bisa diambil
--- atau dijual. Meja di samping spawn: jalan keluar spawn ke utara
--- (x ~0) dan ke base (belok setelah z < 161) tetap lega.
+-- Meja pameran di sebelah spawn (FIX ROUND 8, 20 Nov; FITUR INDEX
+-- 20 Nov: 35 kind): satu meja panjang di TIMUR spawn (pusat x = 32,
+-- z = 168 — sejajar spawn, 11 stud di timur tepi SpawnLocation x = 8),
+-- memajang KE-35 jenis Brainrot (Config.RosterOrder) dalam 5 baris
+-- x 7 kolom (diisi berurutan dari RosterOrder). Model dari
+-- createBrainrotModel yang sama — bentuk + aura rarity + label nama
+-- identik dengan yang di conveyor/pedestal. DEKORASI SAJA: model
+-- statis (Anchored, dari createBrainrotModel), TANPA ProximityPrompt,
+-- TANPA RemoteEvent, TIDAK masuk ekonomi/conveyor/pedestal/peti,
+-- tidak bisa diambil atau dijual. Meja di samping spawn: jalan keluar
+-- spawn ke utara (x ~0) dan ke base (belok setelah z < 157) tetap lega.
 local function buildExhibitionTable()
 	local centerX = Config.EXHIBITION_TABLE_CENTER_X
 	local centerZ = Config.EXHIBITION_TABLE_CENTER_Z
@@ -1266,31 +1267,49 @@ local function buildExhibitionTable()
 		Color3.fromRGB(170, 120, 70)
 	)
 	top.CanCollide = true
-	-- 4 kaki di sudut meja (dari permukaan plaza y = 0.6 sampai
-	-- bawah alas y = topY - 0.25 = 2.5).
+	-- Trim emas di pinggir meja: lempeng tipis 0.5 stud lebih lebar
+	-- dari alas di tiap sisi, tepat di bawah alas (y = 2.4).
+	local trim = makePart(
+		"ExhibitionTableTrim",
+		Vector3.new(topSize.X + 1, 0.2, topSize.Z + 1),
+		Vector3.new(centerX, topY - 0.35, centerZ),
+		Enum.Material.SmoothPlastic,
+		Color3.fromRGB(220, 170, 60)
+	)
+	trim.CanCollide = false
+	-- 6 kaki (4 sudut + 2 tengah sisi): dari tanah y = 0 sampai
+	-- bawah alas y = topY - 0.25 = 2.5. Dari y = 0 (bukan plaza
+	-- y = 0.6) karena ujung selatan meja melewati tepi plaza ke
+	-- atas terrain (y = 0) — kaki harus tetap napak di sana.
 	local legHeight = Config.EXHIBITION_TABLE_LEG_HEIGHT
-	local legY = 0.6 + legHeight / 2
+	local legY = legHeight / 2
+	local legPositions = {}
 	for _, legX in ipairs({ -1, 1 }) do
 		for _, legZ in ipairs({ -1, 1 }) do
-			makePart(
-				"ExhibitionTableLeg",
-				Vector3.new(0.8, legHeight, 0.8),
-				Vector3.new(
-					centerX + legX * (topSize.X / 2 - 0.8),
-					legY,
-					centerZ + legZ * (topSize.Z / 2 - 0.8)
-				),
-				Enum.Material.Wood,
-				Color3.fromRGB(110, 70, 40)
-			)
+			table.insert(legPositions, { legX, legZ })
 		end
+	end
+	table.insert(legPositions, { -1, 0 })
+	table.insert(legPositions, { 1, 0 })
+	for _, legPos in ipairs(legPositions) do
+		makePart(
+			"ExhibitionTableLeg",
+			Vector3.new(0.8, legHeight, 0.8),
+			Vector3.new(
+				centerX + legPos[1] * (topSize.X / 2 - 0.8),
+				legY,
+				centerZ + legPos[2] * (topSize.Z / 2 - 0.8)
+			),
+			Enum.Material.Wood,
+			Color3.fromRGB(110, 70, 40)
+		)
 	end
 	-- Papan nama meja di ujung BARAT (menghadap spawn): papan
 	-- menempel di ujung alas, sisi atas papan rata dengan bawah
 	-- alas (y = 2.5). Pemain baru spawn langsung melihat tulisan.
 	local signBoard = makePart(
 		"ExhibitionTableSign",
-		Vector3.new(0.15, 1.4, 10),
+		Vector3.new(0.15, 1.4, 14),
 		Vector3.new(centerX - topSize.X / 2 - 0.075, 1.8, centerZ),
 		Enum.Material.Wood,
 		Color3.fromRGB(150, 30, 30)
@@ -1312,32 +1331,136 @@ local function buildExhibitionTable()
 	signText.TextSize = Config.EXHIBITION_SIGN_TEXT_SIZE
 	signText.Font = Enum.Font.GothamBold
 	signText.Parent = signGui
-	-- 7 Brainrot pajangan: baris depan (z - ROW_Z) 4 jenis pertama,
-	-- baris belakang (z + ROW_Z) 3 jenis terakhir. Origin model di
-	-- kaki -> PivotTo di permukaan alas (y = 3.0). Model menghadap
-	-- barat (-X, ke arah spawn). Tanpa prompt, tanpa remote.
+	-- 35 Brainrot pajangan (FITUR INDEX): 7 baris x 5 kolom, SATU
+	-- TIER SATU BARIS (baris 1 = 5 Common, dst — RosterOrder sudah
+	-- berkelompok per tier). Jarak lega: kolom 7 stud, baris 6 stud.
+	-- Tiap model berdiri di atas PIRINGAN warna rarity-nya sendiri,
+	-- dan tiap baris punya LABEL NAMA TIER di ujung barat. Model
+	-- menghadap barat (-X, ke arah spawn). Tanpa prompt, tanpa remote.
 	local surfaceY = topY + topSize.Y / 2
 	local spacingX = Config.EXHIBITION_SPACING_X
-	local rowZ = Config.EXHIBITION_ROW_Z
-	local frontX = { -1.5, -0.5, 0.5, 1.5 }
-	local backX = { -1, 0, 1 }
+	local cols = Config.EXHIBITION_COLS
+	local rowSpacing = Config.EXHIBITION_ROW_SPACING_Z
+	local rows = math.ceil(#Config.RosterOrder / cols)
+	local discDiameter = Config.EXHIBITION_DISC_DIAMETER
+	local discHeight = Config.EXHIBITION_DISC_HEIGHT
 	for i, kind in ipairs(Config.RosterOrder) do
-		local model = createBrainrotModel(kind, Config.EXHIBITION_MODEL_SCALE)
-		if model then
-			local xOffset
-			local zOffset
-			if i <= 4 then
-				xOffset = frontX[i] * spacingX
-				zOffset = -rowZ
-			else
-				xOffset = backX[i - 4] * spacingX
-				zOffset = rowZ
+		local entry = Config.Roster[kind]
+		-- (Tanpa `continue`: file ini harus lolos `luac -p` Lua 5.1.)
+		if entry ~= nil then
+			local col = (i - 1) % cols
+			local row = math.floor((i - 1) / cols)
+			local xOffset = (col - (cols - 1) / 2) * spacingX
+			local zOffset = (row - (rows - 1) / 2) * rowSpacing
+			local modelX = centerX + xOffset
+			local modelZ = centerZ + zOffset
+			-- Piringan warna rarity di bawah model (silinder pipih).
+			local disc = Instance.new("Part")
+			disc.Name = "ExhibitionDisc_" .. kind
+			disc.Shape = Enum.PartType.Cylinder
+			disc.Size = Vector3.new(discHeight, discDiameter, discDiameter)
+			disc.CFrame = CFrame.new(modelX, surfaceY + discHeight / 2, modelZ)
+				* CFrame.Angles(0, 0, math.rad(90))
+			disc.Material = Enum.Material.SmoothPlastic
+			disc.Color = entry.Color
+			disc.Anchored = true
+			disc.CanCollide = false
+			disc.Parent = Workspace
+			local model = createBrainrotModel(kind, Config.EXHIBITION_MODEL_SCALE)
+			if model then
+				model.Name = "ExhibitionBrainrot_" .. kind
+				model.Parent = Workspace
+				model:PivotTo(CFrame.new(modelX, surfaceY + discHeight, modelZ)
+					* CFrame.Angles(0, math.rad(-90), 0))
 			end
-			model.Name = "ExhibitionBrainrot_" .. kind
-			model.Parent = Workspace
-			model:PivotTo(CFrame.new(centerX + xOffset, surfaceY, centerZ + zOffset)
-				* CFrame.Angles(0, math.rad(-90), 0))
 		end
+	end
+	-- Label nama tier di ujung barat tiap baris: lempeng datar di
+	-- atas meja (x ~12.25, di luar piringan kolom pertama x 15.5),
+	-- teks warna tier di atasnya, menghadap ke atas.
+	for row = 1, rows do
+		local firstKind = Config.RosterOrder[(row - 1) * cols + 1]
+		local firstEntry = firstKind and Config.Roster[firstKind] or nil
+		-- (Tanpa `continue`: file ini harus lolos `luac -p` Lua 5.1.)
+		if firstEntry ~= nil then
+			local rowZ = centerZ + (row - (rows - 1) / 2) * rowSpacing
+			local labelPlate = makePart(
+				"ExhibitionRowLabel",
+				Vector3.new(3.5, 0.1, 4),
+				Vector3.new(centerX - topSize.X / 2 + 2.25, surfaceY + 0.05, rowZ),
+				Enum.Material.SmoothPlastic,
+				Color3.fromRGB(30, 30, 35)
+			)
+			labelPlate.CanCollide = false
+			local labelGui = Instance.new("SurfaceGui")
+			labelGui.Name = "ExhibitionRowLabelGui"
+			labelGui.Face = Enum.NormalId.Top
+			labelGui.PixelsPerStud = 50
+			labelGui.LightInfluence = 0
+			labelGui.Parent = labelPlate
+			local labelText = Instance.new("TextLabel")
+			labelText.Name = "RowTier"
+			labelText.Size = UDim2.new(1, 0, 1, 0)
+			labelText.BackgroundTransparency = 1
+			labelText.Text = firstEntry.Rarity
+			labelText.TextColor3 = firstEntry.Color
+			labelText.TextScaled = false
+			labelText.TextSize = 20
+			labelText.TextWrapped = true
+			labelText.Font = Enum.Font.GothamBold
+			labelText.Parent = labelGui
+			end
+	end
+	-- 4 tiang lampion di sudut meja (di tanah, di luar meja):
+	-- tiang + bola Neon hangat. Tanpa PointLight (lampion jalan
+	-- sudah cukup banyak) — bola Neon tetap terbaca menyala.
+	for _, cornerX in ipairs({ -1, 1 }) do
+		for _, cornerZ in ipairs({ -1, 1 }) do
+			local px = centerX + cornerX * (topSize.X / 2 + 1.5)
+			local pz = centerZ + cornerZ * (topSize.Z / 2 + 1.5)
+			local pole = makePart(
+				"ExhibitionLanternPole",
+				Vector3.new(0.25, 4, 0.25),
+				Vector3.new(px, 2, pz),
+				Enum.Material.Wood,
+				Color3.fromRGB(110, 70, 40)
+			)
+			pole.CanCollide = false
+			local lamp = makePart(
+				"ExhibitionLantern",
+				Vector3.new(0.7, 0.7, 0.7),
+				Vector3.new(px, 4.3, pz),
+				Enum.Material.Neon,
+				Color3.fromRGB(255, 190, 110)
+			)
+			lamp.Shape = Enum.PartType.Ball
+			lamp.CanCollide = false
+		end
+	end
+	-- 2 tanaman pot di sisi barat meja, mengapit papan nama (di
+	-- atas plaza y = 0.6): pot terakota + bola dedaunan hijau.
+	for _, plantZ in ipairs({ centerZ - 12, centerZ + 12 }) do
+		local pot = Instance.new("Part")
+		pot.Name = "ExhibitionPlantPot"
+		pot.Shape = Enum.PartType.Cylinder
+		pot.Size = Vector3.new(1, 1.2, 1.2)
+		pot.CFrame = CFrame.new(centerX - topSize.X / 2 - 1.5, 0.6 + 0.5, plantZ)
+			* CFrame.Angles(0, 0, math.rad(90))
+		pot.Material = Enum.Material.SmoothPlastic
+		pot.Color = Color3.fromRGB(170, 90, 50)
+		pot.Anchored = true
+		pot.CanCollide = false
+		pot.Parent = Workspace
+		local leaves = Instance.new("Part")
+		leaves.Name = "ExhibitionPlantLeaves"
+		leaves.Shape = Enum.PartType.Ball
+		leaves.Size = Vector3.new(1.6, 1.6, 1.6)
+		leaves.Position = Vector3.new(centerX - topSize.X / 2 - 1.5, 0.6 + 1.6, plantZ)
+		leaves.Material = Enum.Material.SmoothPlastic
+		leaves.Color = Color3.fromRGB(60, 170, 70)
+		leaves.Anchored = true
+		leaves.CanCollide = false
+		leaves.Parent = Workspace
 	end
 end
 
@@ -1640,22 +1763,240 @@ local BRAINROT_FEATURES = {
 		{ Name = "CabbageBackR", Size = Vector3.new(0.8, 0.8, 0.8), Offset = Vector3.new(0.5, 1.5, -0.7), Color = Color3.fromRGB(90, 200, 110), Shape = Enum.PartType.Ball },
 		{ Name = "CabbageHead", Size = Vector3.new(0.7, 0.4, 0.7), Offset = Vector3.new(0, 2.8, 0), Color = Color3.fromRGB(90, 200, 110) },
 	},
-}
-
--- Warna badan tiap hibrida (FIX ROUND 7): badan mengikuti
--- BINATANGNYA (ayam krem, babi = labu oranye, anjing cokelat,
--- kucing abu gelap, beruang cokelat, harimau oranye, gajah abu),
--- BUKAN warna rarity — rarity tetap terbaca dari kalung warna
--- rarity + aura rarity + label. Gajah Kol abu (dulu Gajah Gamelan
--- emas — emasnya pindah ke kalung/aura kuning emas).
-local BRAINROT_BODY_COLORS = {
-	AyamWortel = Color3.fromRGB(245, 240, 225),
-	BabiLabu = Color3.fromRGB(255, 140, 20),
-	AnjingBrokoli = Color3.fromRGB(150, 100, 60),
-	KucingCabai = Color3.fromRGB(70, 70, 75),
-	BeruangTerong = Color3.fromRGB(110, 70, 40),
-	HarimauTomat = Color3.fromRGB(230, 120, 30),
-	GajahKol = Color3.fromRGB(170, 170, 170),
+	-- FITUR INDEX (20 Nov): 28 kind baru — pola sama seperti round 7:
+	-- ciri SAYUR terlihat dari part-part model (bola/daun di kepala
+	-- dan punggung) + ciri hewan (telinga, ekor, sayap, tanduk).
+	BebekBayam = {
+		{ Name = "Beak", Size = Vector3.new(0.5, 0.25, 0.4), Offset = Vector3.new(0, 1.95, 0.7), Color = Color3.fromRGB(255, 170, 0) },
+		{ Name = "WingL", Size = Vector3.new(0.12, 0.7, 0.8), Offset = Vector3.new(-0.85, 1.1, 0), Color = Color3.fromRGB(250, 250, 245) },
+		{ Name = "WingR", Size = Vector3.new(0.12, 0.7, 0.8), Offset = Vector3.new(0.85, 1.1, 0), Color = Color3.fromRGB(250, 250, 245) },
+		{ Name = "SpinachHead", Size = Vector3.new(0.8, 0.8, 0.8), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(50, 150, 60), Shape = Enum.PartType.Ball },
+		{ Name = "SpinachHeadL", Size = Vector3.new(0.5, 0.5, 0.5), Offset = Vector3.new(-0.35, 2.6, 0.1), Color = Color3.fromRGB(50, 150, 60), Shape = Enum.PartType.Ball },
+		{ Name = "SpinachHeadR", Size = Vector3.new(0.5, 0.5, 0.5), Offset = Vector3.new(0.35, 2.6, 0.1), Color = Color3.fromRGB(50, 150, 60), Shape = Enum.PartType.Ball },
+		{ Name = "SpinachBack", Size = Vector3.new(0.7, 0.7, 0.7), Offset = Vector3.new(0, 1.6, -0.85), Color = Color3.fromRGB(50, 150, 60), Shape = Enum.PartType.Ball },
+	},
+	KambingSawi = {
+		{ Name = "HornL", Size = Vector3.new(0.2, 0.6, 0.2), Offset = Vector3.new(-0.4, 2.8, 0), Color = Color3.fromRGB(240, 230, 200) },
+		{ Name = "HornR", Size = Vector3.new(0.2, 0.6, 0.2), Offset = Vector3.new(0.4, 2.8, 0), Color = Color3.fromRGB(240, 230, 200) },
+		{ Name = "EarL", Size = Vector3.new(0.3, 0.5, 0.15), Offset = Vector3.new(-0.5, 2.6, 0), Color = Color3.fromRGB(220, 190, 150) },
+		{ Name = "EarR", Size = Vector3.new(0.3, 0.5, 0.15), Offset = Vector3.new(0.5, 2.6, 0), Color = Color3.fromRGB(220, 190, 150) },
+		{ Name = "Beard", Size = Vector3.new(0.3, 0.4, 0.2), Offset = Vector3.new(0, 1.7, 0.65), Color = Color3.fromRGB(250, 250, 245) },
+		{ Name = "MustardHead", Size = Vector3.new(0.5, 0.3, 0.5), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(60, 170, 70) },
+		{ Name = "MustardBack", Size = Vector3.new(0.7, 0.7, 0.7), Offset = Vector3.new(0, 1.5, -0.85), Color = Color3.fromRGB(60, 170, 70), Shape = Enum.PartType.Ball },
+	},
+	KelinciSeledri = {
+		{ Name = "EarL", Size = Vector3.new(0.25, 0.9, 0.15), Offset = Vector3.new(-0.35, 3.0, 0), Color = Color3.fromRGB(250, 245, 240) },
+		{ Name = "EarR", Size = Vector3.new(0.25, 0.9, 0.15), Offset = Vector3.new(0.35, 3.0, 0), Color = Color3.fromRGB(250, 245, 240) },
+		{ Name = "Nose", Size = Vector3.new(0.2, 0.15, 0.1), Offset = Vector3.new(0, 1.95, 0.65), Color = Color3.fromRGB(255, 120, 150) },
+		{ Name = "TailBall", Size = Vector3.new(0.35, 0.35, 0.35), Offset = Vector3.new(0, 0.9, -0.95), Color = Color3.fromRGB(250, 250, 245), Shape = Enum.PartType.Ball },
+		{ Name = "CeleryHead", Size = Vector3.new(0.5, 0.3, 0.5), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(150, 220, 120) },
+		{ Name = "CeleryBack", Size = Vector3.new(0.3, 1.0, 0.3), Offset = Vector3.new(0, 1.4, -0.9), Color = Color3.fromRGB(150, 220, 120) },
+	},
+	ItikJagung = {
+		{ Name = "Beak", Size = Vector3.new(0.5, 0.25, 0.4), Offset = Vector3.new(0, 1.95, 0.7), Color = Color3.fromRGB(255, 170, 0) },
+		{ Name = "WingL", Size = Vector3.new(0.12, 0.7, 0.8), Offset = Vector3.new(-0.85, 1.1, 0), Color = Color3.fromRGB(250, 250, 245) },
+		{ Name = "WingR", Size = Vector3.new(0.12, 0.7, 0.8), Offset = Vector3.new(0.85, 1.1, 0), Color = Color3.fromRGB(250, 250, 245) },
+		{ Name = "CornHead", Size = Vector3.new(0.5, 0.5, 0.5), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(255, 220, 60), Shape = Enum.PartType.Ball },
+		{ Name = "CornBack", Size = Vector3.new(0.5, 1.0, 0.5), Offset = Vector3.new(0, 1.4, -0.85), Color = Color3.fromRGB(255, 220, 60) },
+		{ Name = "CornLeaves", Size = Vector3.new(0.6, 0.3, 0.6), Offset = Vector3.new(0, 2.0, -0.85), Color = Color3.fromRGB(60, 170, 70) },
+	},
+	MonyetPisang = {
+		{ Name = "EarL", Size = Vector3.new(0.4, 0.4, 0.4), Offset = Vector3.new(-0.5, 2.6, 0), Color = Color3.fromRGB(140, 95, 55), Shape = Enum.PartType.Ball },
+		{ Name = "EarR", Size = Vector3.new(0.4, 0.4, 0.4), Offset = Vector3.new(0.5, 2.6, 0), Color = Color3.fromRGB(140, 95, 55), Shape = Enum.PartType.Ball },
+		{ Name = "Tail", Size = Vector3.new(0.25, 0.9, 0.25), Offset = Vector3.new(0, 0.9, -0.95), Color = Color3.fromRGB(140, 95, 55) },
+		{ Name = "BananaHead", Size = Vector3.new(0.4, 0.7, 0.4), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(255, 230, 80) },
+		{ Name = "BananaBack", Size = Vector3.new(0.35, 0.9, 0.35), Offset = Vector3.new(0, 1.5, -0.9), Color = Color3.fromRGB(255, 230, 80) },
+		{ Name = "BananaTip", Size = Vector3.new(0.2, 0.2, 0.2), Offset = Vector3.new(0, 2.2, -0.9), Color = Color3.fromRGB(90, 70, 40) },
+	},
+	SapiJagung = {
+		{ Name = "HornL", Size = Vector3.new(0.2, 0.5, 0.2), Offset = Vector3.new(-0.45, 2.75, 0), Color = Color3.fromRGB(240, 230, 200) },
+		{ Name = "HornR", Size = Vector3.new(0.2, 0.5, 0.2), Offset = Vector3.new(0.45, 2.75, 0), Color = Color3.fromRGB(240, 230, 200) },
+		{ Name = "EarL", Size = Vector3.new(0.35, 0.4, 0.15), Offset = Vector3.new(-0.5, 2.6, 0), Color = Color3.fromRGB(235, 225, 215) },
+		{ Name = "EarR", Size = Vector3.new(0.35, 0.4, 0.15), Offset = Vector3.new(0.5, 2.6, 0), Color = Color3.fromRGB(235, 225, 215) },
+		{ Name = "Snout", Size = Vector3.new(0.6, 0.4, 0.3), Offset = Vector3.new(0, 1.85, 0.65), Color = Color3.fromRGB(255, 170, 190) },
+		{ Name = "CornBack", Size = Vector3.new(0.6, 1.0, 0.6), Offset = Vector3.new(0, 1.4, -0.85), Color = Color3.fromRGB(255, 220, 60) },
+		{ Name = "CornSilk", Size = Vector3.new(0.5, 0.3, 0.5), Offset = Vector3.new(0, 2.0, -0.85), Color = Color3.fromRGB(200, 220, 90) },
+	},
+	KudaKentang = {
+		{ Name = "EarL", Size = Vector3.new(0.3, 0.5, 0.15), Offset = Vector3.new(-0.4, 2.75, 0), Color = Color3.fromRGB(150, 85, 40) },
+		{ Name = "EarR", Size = Vector3.new(0.3, 0.5, 0.15), Offset = Vector3.new(0.4, 2.75, 0), Color = Color3.fromRGB(150, 85, 40) },
+		{ Name = "Mane", Size = Vector3.new(0.4, 1.0, 0.5), Offset = Vector3.new(0, 2.3, -0.5), Color = Color3.fromRGB(60, 35, 20) },
+		{ Name = "Tail", Size = Vector3.new(0.3, 0.9, 0.3), Offset = Vector3.new(0, 0.9, -0.95), Color = Color3.fromRGB(60, 35, 20) },
+		{ Name = "PotatoBack", Size = Vector3.new(0.8, 0.8, 0.8), Offset = Vector3.new(0, 1.5, -0.85), Color = Color3.fromRGB(190, 150, 90), Shape = Enum.PartType.Ball },
+		{ Name = "PotatoHead", Size = Vector3.new(0.5, 0.5, 0.5), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(190, 150, 90), Shape = Enum.PartType.Ball },
+	},
+	DombaTimun = {
+		{ Name = "EarL", Size = Vector3.new(0.3, 0.4, 0.15), Offset = Vector3.new(-0.5, 2.6, 0), Color = Color3.fromRGB(240, 235, 225) },
+		{ Name = "EarR", Size = Vector3.new(0.3, 0.4, 0.15), Offset = Vector3.new(0.5, 2.6, 0), Color = Color3.fromRGB(240, 235, 225) },
+		{ Name = "WoolHead", Size = Vector3.new(1.0, 1.0, 1.0), Offset = Vector3.new(0, 2.7, 0), Color = Color3.fromRGB(250, 250, 245), Shape = Enum.PartType.Ball },
+		{ Name = "WoolBack", Size = Vector3.new(1.0, 1.0, 1.0), Offset = Vector3.new(0, 1.5, -0.6), Color = Color3.fromRGB(250, 250, 245), Shape = Enum.PartType.Ball },
+		{ Name = "CucumberBack", Size = Vector3.new(0.35, 1.1, 0.35), Offset = Vector3.new(0, 1.4, -0.95), Color = Color3.fromRGB(60, 180, 80) },
+		{ Name = "CucumberLeaves", Size = Vector3.new(0.4, 0.2, 0.4), Offset = Vector3.new(0, 2.0, -0.95), Color = Color3.fromRGB(50, 140, 60) },
+	},
+	TupaiKacang = {
+		{ Name = "EarL", Size = Vector3.new(0.25, 0.45, 0.15), Offset = Vector3.new(-0.4, 2.75, 0), Color = Color3.fromRGB(170, 110, 60) },
+		{ Name = "EarR", Size = Vector3.new(0.25, 0.45, 0.15), Offset = Vector3.new(0.4, 2.75, 0), Color = Color3.fromRGB(170, 110, 60) },
+		{ Name = "TailBig", Size = Vector3.new(0.5, 1.2, 0.4), Offset = Vector3.new(0, 1.3, -1.0), Color = Color3.fromRGB(170, 110, 60) },
+		{ Name = "Nose", Size = Vector3.new(0.2, 0.15, 0.1), Offset = Vector3.new(0, 1.95, 0.65), Color = Color3.fromRGB(60, 40, 30) },
+		{ Name = "PeanutBack", Size = Vector3.new(0.5, 0.8, 0.5), Offset = Vector3.new(0, 1.5, -0.85), Color = Color3.fromRGB(210, 170, 110) },
+		{ Name = "PeanutHead", Size = Vector3.new(0.45, 0.45, 0.45), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(210, 170, 110), Shape = Enum.PartType.Ball },
+	},
+	LandakPaprika = {
+		{ Name = "QuillL", Size = Vector3.new(0.15, 0.7, 0.15), Offset = Vector3.new(-0.4, 2.6, -0.5), Color = Color3.fromRGB(50, 40, 35) },
+		{ Name = "QuillR", Size = Vector3.new(0.15, 0.7, 0.15), Offset = Vector3.new(0.4, 2.6, -0.5), Color = Color3.fromRGB(50, 40, 35) },
+		{ Name = "QuillC", Size = Vector3.new(0.15, 0.8, 0.15), Offset = Vector3.new(0, 2.7, -0.5), Color = Color3.fromRGB(50, 40, 35) },
+		{ Name = "Snout", Size = Vector3.new(0.4, 0.3, 0.3), Offset = Vector3.new(0, 1.9, 0.65), Color = Color3.fromRGB(190, 150, 120) },
+		{ Name = "PepperBack", Size = Vector3.new(0.5, 0.9, 0.5), Offset = Vector3.new(0, 1.4, -0.85), Color = Color3.fromRGB(220, 40, 40) },
+		{ Name = "PepperStem", Size = Vector3.new(0.25, 0.3, 0.25), Offset = Vector3.new(0, 1.95, -0.85), Color = Color3.fromRGB(50, 140, 60) },
+	},
+	RubahUbi = {
+		{ Name = "EarL", Size = Vector3.new(0.35, 0.6, 0.15), Offset = Vector3.new(-0.4, 2.8, 0), Color = Color3.fromRGB(200, 90, 40) },
+		{ Name = "EarR", Size = Vector3.new(0.35, 0.6, 0.15), Offset = Vector3.new(0.4, 2.8, 0), Color = Color3.fromRGB(200, 90, 40) },
+		{ Name = "Snout", Size = Vector3.new(0.5, 0.35, 0.4), Offset = Vector3.new(0, 1.85, 0.65), Color = Color3.fromRGB(230, 200, 170) },
+		{ Name = "Tail", Size = Vector3.new(0.4, 1.0, 0.4), Offset = Vector3.new(0, 0.9, -0.95), Color = Color3.fromRGB(200, 90, 40) },
+		{ Name = "SweetPotatoBack", Size = Vector3.new(0.7, 0.9, 0.7), Offset = Vector3.new(0, 1.4, -0.85), Color = Color3.fromRGB(140, 80, 160) },
+		{ Name = "SweetPotatoHead", Size = Vector3.new(0.5, 0.5, 0.5), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(140, 80, 160), Shape = Enum.PartType.Ball },
+	},
+	MusangSawi = {
+		{ Name = "EarL", Size = Vector3.new(0.3, 0.45, 0.15), Offset = Vector3.new(-0.4, 2.75, 0), Color = Color3.fromRGB(120, 90, 60) },
+		{ Name = "EarR", Size = Vector3.new(0.3, 0.45, 0.15), Offset = Vector3.new(0.4, 2.75, 0), Color = Color3.fromRGB(120, 90, 60) },
+		{ Name = "Snout", Size = Vector3.new(0.45, 0.35, 0.35), Offset = Vector3.new(0, 1.9, 0.65), Color = Color3.fromRGB(200, 170, 140) },
+		{ Name = "Tail", Size = Vector3.new(0.25, 1.0, 0.25), Offset = Vector3.new(0, 0.9, -0.95), Color = Color3.fromRGB(120, 90, 60) },
+		{ Name = "MustardBack", Size = Vector3.new(0.6, 1.0, 0.6), Offset = Vector3.new(0, 1.4, -0.85), Color = Color3.fromRGB(60, 170, 70) },
+		{ Name = "MustardLeaves", Size = Vector3.new(0.5, 0.3, 0.5), Offset = Vector3.new(0, 2.0, -0.85), Color = Color3.fromRGB(60, 170, 70) },
+		{ Name = "StripeBack", Size = Vector3.new(0.5, 1.2, 0.1), Offset = Vector3.new(0, 1.2, -0.85), Color = Color3.fromRGB(60, 50, 40) },
+	},
+	BurungPaprika = {
+		{ Name = "Beak", Size = Vector3.new(0.35, 0.25, 0.5), Offset = Vector3.new(0, 1.95, 0.7), Color = Color3.fromRGB(255, 180, 40) },
+		{ Name = "WingL", Size = Vector3.new(0.12, 0.8, 0.9), Offset = Vector3.new(-0.85, 1.2, 0), Color = Color3.fromRGB(60, 130, 220) },
+		{ Name = "WingR", Size = Vector3.new(0.12, 0.8, 0.9), Offset = Vector3.new(0.85, 1.2, 0), Color = Color3.fromRGB(60, 130, 220) },
+		{ Name = "TailFeather", Size = Vector3.new(0.5, 0.8, 0.15), Offset = Vector3.new(0, 0.8, -0.95), Color = Color3.fromRGB(60, 130, 220) },
+		{ Name = "PepperHead", Size = Vector3.new(0.6, 0.6, 0.6), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(220, 40, 40), Shape = Enum.PartType.Ball },
+		{ Name = "PepperStem", Size = Vector3.new(0.25, 0.3, 0.25), Offset = Vector3.new(0, 3.2, 0), Color = Color3.fromRGB(50, 140, 60) },
+	},
+	PandaUbi = {
+		{ Name = "EarL", Size = Vector3.new(0.45, 0.45, 0.45), Offset = Vector3.new(-0.5, 2.7, 0), Color = Color3.fromRGB(40, 40, 40), Shape = Enum.PartType.Ball },
+		{ Name = "EarR", Size = Vector3.new(0.45, 0.45, 0.45), Offset = Vector3.new(0.5, 2.7, 0), Color = Color3.fromRGB(40, 40, 40), Shape = Enum.PartType.Ball },
+		{ Name = "EyePatchL", Size = Vector3.new(0.3, 0.35, 0.1), Offset = Vector3.new(-0.3, 2.1, 0.62), Color = Color3.fromRGB(40, 40, 40) },
+		{ Name = "EyePatchR", Size = Vector3.new(0.3, 0.35, 0.1), Offset = Vector3.new(0.3, 2.1, 0.62), Color = Color3.fromRGB(40, 40, 40) },
+		{ Name = "SweetPotatoBack", Size = Vector3.new(0.7, 1.0, 0.7), Offset = Vector3.new(0, 1.4, -0.85), Color = Color3.fromRGB(140, 80, 160) },
+		{ Name = "SweetPotatoLeaves", Size = Vector3.new(0.4, 0.25, 0.4), Offset = Vector3.new(0, 2.0, -0.85), Color = Color3.fromRGB(50, 140, 60) },
+	},
+	ElangBawang = {
+		{ Name = "Beak", Size = Vector3.new(0.35, 0.3, 0.5), Offset = Vector3.new(0, 1.95, 0.7), Color = Color3.fromRGB(255, 200, 60) },
+		{ Name = "WingL", Size = Vector3.new(0.15, 1.0, 1.0), Offset = Vector3.new(-0.9, 1.5, 0), Color = Color3.fromRGB(120, 90, 60) },
+		{ Name = "WingR", Size = Vector3.new(0.15, 1.0, 1.0), Offset = Vector3.new(0.9, 1.5, 0), Color = Color3.fromRGB(120, 90, 60) },
+		{ Name = "TailFeather", Size = Vector3.new(0.5, 0.9, 0.15), Offset = Vector3.new(0, 0.8, -0.95), Color = Color3.fromRGB(120, 90, 60) },
+		{ Name = "OnionHead", Size = Vector3.new(0.55, 0.55, 0.55), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(220, 190, 230), Shape = Enum.PartType.Ball },
+		{ Name = "OnionSprout", Size = Vector3.new(0.3, 0.4, 0.3), Offset = Vector3.new(0, 3.2, 0), Color = Color3.fromRGB(60, 170, 70) },
+	},
+	KoalaSingkong = {
+		{ Name = "EarL", Size = Vector3.new(0.6, 0.6, 0.6), Offset = Vector3.new(-0.55, 2.6, 0), Color = Color3.fromRGB(170, 170, 170), Shape = Enum.PartType.Ball },
+		{ Name = "EarR", Size = Vector3.new(0.6, 0.6, 0.6), Offset = Vector3.new(0.55, 2.6, 0), Color = Color3.fromRGB(170, 170, 170), Shape = Enum.PartType.Ball },
+		{ Name = "Nose", Size = Vector3.new(0.3, 0.25, 0.2), Offset = Vector3.new(0, 1.95, 0.65), Color = Color3.fromRGB(40, 40, 40) },
+		{ Name = "CassavaBack", Size = Vector3.new(0.5, 1.1, 0.5), Offset = Vector3.new(0, 1.4, -0.85), Color = Color3.fromRGB(190, 150, 100) },
+		{ Name = "CassavaLeaves", Size = Vector3.new(0.5, 0.3, 0.5), Offset = Vector3.new(0, 2.0, -0.85), Color = Color3.fromRGB(60, 170, 70) },
+	},
+	SingaJahe = {
+		{ Name = "Mane", Size = Vector3.new(1.3, 1.3, 1.3), Offset = Vector3.new(0, 2.2, 0), Color = Color3.fromRGB(200, 140, 60), Shape = Enum.PartType.Ball },
+		{ Name = "EarL", Size = Vector3.new(0.3, 0.3, 0.3), Offset = Vector3.new(-0.45, 2.8, 0), Color = Color3.fromRGB(220, 165, 70), Shape = Enum.PartType.Ball },
+		{ Name = "EarR", Size = Vector3.new(0.3, 0.3, 0.3), Offset = Vector3.new(0.45, 2.8, 0), Color = Color3.fromRGB(220, 165, 70), Shape = Enum.PartType.Ball },
+		{ Name = "Tail", Size = Vector3.new(0.3, 0.9, 0.3), Offset = Vector3.new(0, 0.9, -0.95), Color = Color3.fromRGB(220, 165, 70) },
+		{ Name = "GingerBack", Size = Vector3.new(0.6, 0.9, 0.6), Offset = Vector3.new(0, 1.4, -0.85), Color = Color3.fromRGB(210, 170, 110) },
+		{ Name = "GingerHead", Size = Vector3.new(0.5, 0.5, 0.5), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(210, 170, 110), Shape = Enum.PartType.Ball },
+	},
+	BadakKunyit = {
+		{ Name = "Horn", Size = Vector3.new(0.3, 0.8, 0.3), Offset = Vector3.new(0, 2.5, 0.5), Color = Color3.fromRGB(220, 220, 210) },
+		{ Name = "EarL", Size = Vector3.new(0.35, 0.4, 0.15), Offset = Vector3.new(-0.5, 2.6, 0), Color = Color3.fromRGB(150, 150, 150) },
+		{ Name = "EarR", Size = Vector3.new(0.35, 0.4, 0.15), Offset = Vector3.new(0.5, 2.6, 0), Color = Color3.fromRGB(150, 150, 150) },
+		{ Name = "Snout", Size = Vector3.new(0.6, 0.4, 0.4), Offset = Vector3.new(0, 1.85, 0.62), Color = Color3.fromRGB(180, 180, 170) },
+		{ Name = "TurmericBack", Size = Vector3.new(0.7, 1.0, 0.7), Offset = Vector3.new(0, 1.4, -0.85), Color = Color3.fromRGB(230, 170, 40) },
+		{ Name = "TurmericLeaves", Size = Vector3.new(0.5, 0.3, 0.5), Offset = Vector3.new(0, 2.0, -0.85), Color = Color3.fromRGB(60, 170, 70) },
+	},
+	MacanSelada = {
+		{ Name = "EarL", Size = Vector3.new(0.3, 0.4, 0.15), Offset = Vector3.new(-0.4, 2.75, 0), Color = Color3.fromRGB(220, 170, 90) },
+		{ Name = "EarR", Size = Vector3.new(0.3, 0.4, 0.15), Offset = Vector3.new(0.4, 2.75, 0), Color = Color3.fromRGB(220, 170, 90) },
+		{ Name = "Tail", Size = Vector3.new(0.3, 0.9, 0.3), Offset = Vector3.new(0, 0.9, -0.95), Color = Color3.fromRGB(220, 170, 90) },
+		{ Name = "SpotL", Size = Vector3.new(0.1, 0.4, 0.4), Offset = Vector3.new(-0.82, 1.2, 0.3), Color = Color3.fromRGB(40, 30, 20) },
+		{ Name = "SpotR", Size = Vector3.new(0.1, 0.4, 0.4), Offset = Vector3.new(0.82, 1.2, 0.3), Color = Color3.fromRGB(40, 30, 20) },
+		{ Name = "LettuceHead", Size = Vector3.new(0.6, 0.6, 0.6), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(110, 200, 110), Shape = Enum.PartType.Ball },
+		{ Name = "LettuceBack", Size = Vector3.new(0.8, 0.8, 0.8), Offset = Vector3.new(0, 1.5, -0.85), Color = Color3.fromRGB(110, 200, 110), Shape = Enum.PartType.Ball },
+	},
+	BantengPare = {
+		{ Name = "HornL", Size = Vector3.new(0.25, 0.7, 0.25), Offset = Vector3.new(-0.5, 2.8, 0), Color = Color3.fromRGB(240, 230, 200) },
+		{ Name = "HornR", Size = Vector3.new(0.25, 0.7, 0.25), Offset = Vector3.new(0.5, 2.8, 0), Color = Color3.fromRGB(240, 230, 200) },
+		{ Name = "Snout", Size = Vector3.new(0.6, 0.4, 0.4), Offset = Vector3.new(0, 1.85, 0.65), Color = Color3.fromRGB(255, 170, 190) },
+		{ Name = "Tail", Size = Vector3.new(0.3, 0.9, 0.3), Offset = Vector3.new(0, 0.9, -0.95), Color = Color3.fromRGB(90, 60, 40) },
+		{ Name = "BitterGourdBack", Size = Vector3.new(0.45, 1.1, 0.45), Offset = Vector3.new(0, 1.4, -0.85), Color = Color3.fromRGB(70, 160, 70) },
+		{ Name = "BitterGourdLeaves", Size = Vector3.new(0.5, 0.3, 0.5), Offset = Vector3.new(0, 2.0, -0.85), Color = Color3.fromRGB(50, 140, 60) },
+	},
+	NagaSelada = {
+		{ Name = "WingL", Size = Vector3.new(0.15, 0.9, 1.0), Offset = Vector3.new(-0.9, 1.6, 0), Color = Color3.fromRGB(60, 170, 90) },
+		{ Name = "WingR", Size = Vector3.new(0.15, 0.9, 1.0), Offset = Vector3.new(0.9, 1.6, 0), Color = Color3.fromRGB(60, 170, 90) },
+		{ Name = "HornL", Size = Vector3.new(0.2, 0.6, 0.2), Offset = Vector3.new(-0.35, 2.85, 0), Color = Color3.fromRGB(240, 210, 100) },
+		{ Name = "HornR", Size = Vector3.new(0.2, 0.6, 0.2), Offset = Vector3.new(0.35, 2.85, 0), Color = Color3.fromRGB(240, 210, 100) },
+		{ Name = "Tail", Size = Vector3.new(0.35, 0.9, 0.35), Offset = Vector3.new(0, 0.9, -0.95), Color = Color3.fromRGB(60, 170, 90) },
+		{ Name = "LettuceHead", Size = Vector3.new(0.7, 0.7, 0.7), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(110, 200, 110), Shape = Enum.PartType.Ball },
+		{ Name = "LettuceBack", Size = Vector3.new(0.9, 0.9, 0.9), Offset = Vector3.new(0, 1.5, -0.85), Color = Color3.fromRGB(110, 200, 110), Shape = Enum.PartType.Ball },
+	},
+	GarudaBawang = {
+		{ Name = "WingL", Size = Vector3.new(0.15, 1.0, 1.0), Offset = Vector3.new(-0.9, 1.5, 0), Color = Color3.fromRGB(190, 140, 60) },
+		{ Name = "WingR", Size = Vector3.new(0.15, 1.0, 1.0), Offset = Vector3.new(0.9, 1.5, 0), Color = Color3.fromRGB(190, 140, 60) },
+		{ Name = "Beak", Size = Vector3.new(0.35, 0.3, 0.5), Offset = Vector3.new(0, 1.95, 0.7), Color = Color3.fromRGB(255, 200, 60) },
+		{ Name = "TailFeather", Size = Vector3.new(0.5, 0.9, 0.15), Offset = Vector3.new(0, 0.8, -0.95), Color = Color3.fromRGB(190, 140, 60) },
+		{ Name = "OnionHead", Size = Vector3.new(0.6, 0.6, 0.6), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(220, 190, 230), Shape = Enum.PartType.Ball },
+		{ Name = "OnionSprout", Size = Vector3.new(0.3, 0.4, 0.3), Offset = Vector3.new(0, 3.25, 0), Color = Color3.fromRGB(60, 170, 70) },
+	},
+	PhoenixKunyit = {
+		{ Name = "WingL", Size = Vector3.new(0.15, 1.0, 1.0), Offset = Vector3.new(-0.9, 1.5, 0), Color = Color3.fromRGB(230, 110, 40) },
+		{ Name = "WingR", Size = Vector3.new(0.15, 1.0, 1.0), Offset = Vector3.new(0.9, 1.5, 0), Color = Color3.fromRGB(230, 110, 40) },
+		{ Name = "Beak", Size = Vector3.new(0.35, 0.3, 0.5), Offset = Vector3.new(0, 1.95, 0.7), Color = Color3.fromRGB(255, 200, 60) },
+		{ Name = "TailFeather", Size = Vector3.new(0.3, 1.2, 0.2), Offset = Vector3.new(0, 0.8, -1.0), Color = Color3.fromRGB(230, 110, 40) },
+		{ Name = "FlameCrest", Size = Vector3.new(0.4, 0.5, 0.4), Offset = Vector3.new(0, 3.0, 0), Color = Color3.fromRGB(255, 90, 30) },
+		{ Name = "TurmericHead", Size = Vector3.new(0.55, 0.55, 0.55), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(230, 170, 40), Shape = Enum.PartType.Ball },
+		{ Name = "TurmericBack", Size = Vector3.new(0.6, 0.9, 0.6), Offset = Vector3.new(0, 1.4, -0.85), Color = Color3.fromRGB(230, 170, 40) },
+	},
+	KirinDurian = {
+		{ Name = "Horn", Size = Vector3.new(0.25, 0.9, 0.25), Offset = Vector3.new(0, 2.9, 0.2), Color = Color3.fromRGB(240, 210, 100) },
+		{ Name = "Mane", Size = Vector3.new(0.4, 0.9, 0.4), Offset = Vector3.new(0, 2.2, -0.6), Color = Color3.fromRGB(60, 150, 140) },
+		{ Name = "EarL", Size = Vector3.new(0.3, 0.45, 0.15), Offset = Vector3.new(-0.45, 2.7, 0), Color = Color3.fromRGB(220, 170, 90) },
+		{ Name = "EarR", Size = Vector3.new(0.3, 0.45, 0.15), Offset = Vector3.new(0.45, 2.7, 0), Color = Color3.fromRGB(220, 170, 90) },
+		{ Name = "Tail", Size = Vector3.new(0.3, 0.9, 0.3), Offset = Vector3.new(0, 0.9, -0.95), Color = Color3.fromRGB(220, 170, 90) },
+		{ Name = "DurianBack", Size = Vector3.new(0.9, 0.9, 0.9), Offset = Vector3.new(0, 1.5, -0.85), Color = Color3.fromRGB(200, 180, 60), Shape = Enum.PartType.Ball },
+		{ Name = "DurianHead", Size = Vector3.new(0.5, 0.5, 0.5), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(200, 180, 60), Shape = Enum.PartType.Ball },
+	},
+	KomodoSingkong = {
+		{ Name = "Snout", Size = Vector3.new(0.5, 0.4, 0.4), Offset = Vector3.new(0, 1.85, 0.65), Color = Color3.fromRGB(120, 140, 110) },
+		{ Name = "Tongue", Size = Vector3.new(0.2, 0.15, 0.5), Offset = Vector3.new(0, 1.7, 0.8), Color = Color3.fromRGB(220, 60, 60) },
+		{ Name = "Tail", Size = Vector3.new(0.35, 0.5, 1.2), Offset = Vector3.new(0, 0.7, -1.1), Color = Color3.fromRGB(90, 110, 80) },
+		{ Name = "CassavaBack", Size = Vector3.new(0.6, 1.0, 0.6), Offset = Vector3.new(0, 1.4, -0.85), Color = Color3.fromRGB(190, 150, 100) },
+		{ Name = "CassavaLeaves", Size = Vector3.new(0.5, 0.3, 0.5), Offset = Vector3.new(0, 2.0, -0.85), Color = Color3.fromRGB(60, 170, 70) },
+	},
+	PausUbi = {
+		{ Name = "TailFin", Size = Vector3.new(0.9, 0.2, 0.5), Offset = Vector3.new(0, 0.9, -1.0), Color = Color3.fromRGB(90, 130, 180) },
+		{ Name = "FinL", Size = Vector3.new(0.15, 0.4, 0.7), Offset = Vector3.new(-0.85, 1.0, 0), Color = Color3.fromRGB(90, 130, 180) },
+		{ Name = "FinR", Size = Vector3.new(0.15, 0.4, 0.7), Offset = Vector3.new(0.85, 1.0, 0), Color = Color3.fromRGB(90, 130, 180) },
+		{ Name = "Spout", Size = Vector3.new(0.3, 0.6, 0.3), Offset = Vector3.new(0, 2.9, 0), Color = Color3.fromRGB(170, 220, 255) },
+		{ Name = "SweetPotatoBack", Size = Vector3.new(0.7, 0.9, 0.7), Offset = Vector3.new(0, 1.4, -0.85), Color = Color3.fromRGB(140, 80, 160) },
+		{ Name = "SweetPotatoHead", Size = Vector3.new(0.5, 0.5, 0.5), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(140, 80, 160), Shape = Enum.PartType.Ball },
+	},
+	OrangutanDurian = {
+		{ Name = "ArmL", Size = Vector3.new(0.35, 1.2, 0.35), Offset = Vector3.new(-0.9, 1.0, 0), Color = Color3.fromRGB(200, 110, 50) },
+		{ Name = "ArmR", Size = Vector3.new(0.35, 1.2, 0.35), Offset = Vector3.new(0.9, 1.0, 0), Color = Color3.fromRGB(200, 110, 50) },
+		{ Name = "FacePatch", Size = Vector3.new(0.8, 0.6, 0.1), Offset = Vector3.new(0, 2.05, 0.6), Color = Color3.fromRGB(230, 190, 150) },
+		{ Name = "DurianBack", Size = Vector3.new(0.9, 0.9, 0.9), Offset = Vector3.new(0, 1.5, -0.85), Color = Color3.fromRGB(200, 180, 60), Shape = Enum.PartType.Ball },
+		{ Name = "DurianHead", Size = Vector3.new(0.55, 0.55, 0.55), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(200, 180, 60), Shape = Enum.PartType.Ball },
+		{ Name = "DurianSpikeL", Size = Vector3.new(0.2, 0.2, 0.2), Offset = Vector3.new(-0.35, 1.9, -0.85), Color = Color3.fromRGB(170, 150, 50) },
+		{ Name = "DurianSpikeR", Size = Vector3.new(0.2, 0.2, 0.2), Offset = Vector3.new(0.35, 1.9, -0.85), Color = Color3.fromRGB(170, 150, 50) },
+	},
+	CendrawasihDurian = {
+		{ Name = "Beak", Size = Vector3.new(0.35, 0.25, 0.5), Offset = Vector3.new(0, 1.95, 0.7), Color = Color3.fromRGB(255, 180, 40) },
+		{ Name = "WingL", Size = Vector3.new(0.15, 0.9, 0.9), Offset = Vector3.new(-0.9, 1.5, 0), Color = Color3.fromRGB(60, 180, 160) },
+		{ Name = "WingR", Size = Vector3.new(0.15, 0.9, 0.9), Offset = Vector3.new(0.9, 1.5, 0), Color = Color3.fromRGB(60, 180, 160) },
+		{ Name = "TailPlume", Size = Vector3.new(0.3, 1.3, 0.15), Offset = Vector3.new(0, 0.9, -1.0), Color = Color3.fromRGB(230, 110, 180) },
+		{ Name = "DurianBack", Size = Vector3.new(0.8, 0.8, 0.8), Offset = Vector3.new(0, 1.5, -0.85), Color = Color3.fromRGB(200, 180, 60), Shape = Enum.PartType.Ball },
+		{ Name = "DurianHead", Size = Vector3.new(0.5, 0.5, 0.5), Offset = Vector3.new(0, 2.85, 0), Color = Color3.fromRGB(200, 180, 60), Shape = Enum.PartType.Ball },
+	},
 }
 
 local function addBrainrotPart(model, name, size, offset, color, material, shape)
@@ -1677,8 +2018,12 @@ end
 -- Model Brainrot sederhana (badan + kepala + mata + ciri khas) dengan
 -- label nama + rarity + income. Origin model di kaki (y = 0) sehingga
 -- PivotTo(CFrame.new(posisi permukaan)) meletakkannya tepat di atas
--- permukaan. Warna badan dari BRAINROT_BODY_COLORS (binatangnya);
--- rarity terbaca dari kalung + aura + label.
+-- permukaan. Warna badan DAN kepala = entry.Color (WARNA RARITY —
+-- perintah bos "warna sesuai rank aja deh" + "jangan monton putih",
+-- FITUR INDEX 20 Nov): semua kind satu tier satu warna badan +
+-- kepala yang VIVID; kaki tetap gelap, mata tetap hitam + highlight
+-- putih; kalung + aura + label tetap warna rarity. Ciri hibrida
+-- (sayur + bentuk hewan) tetap dari BRAINROT_FEATURES.
 -- FIX ROUND 9: TANPA `local` — mengisi forward declaration di atas
 -- buildExhibitionTable (local function kedua akan membuat local BARU
 -- yang menutupi forward declaration dan bug kembali).
@@ -1690,14 +2035,14 @@ createBrainrotModel = function(kind, scale)
 	local s = scale or 1
 	local model = Instance.new("Model")
 	model.Name = "Brainrot_" .. kind
-	local bodyColor = BRAINROT_BODY_COLORS[kind] or entry.Color
+	local bodyColor = entry.Color -- warna rarity (FITUR INDEX)
 	local bodyMaterial = Enum.Material.SmoothPlastic
 	local body = addBrainrotPart(model, "Body",
 		Vector3.new(1.6, 1.6, 1.6) * s, Vector3.new(0, 0.8 * s, 0),
 		bodyColor, bodyMaterial)
 	local head = addBrainrotPart(model, "Head",
 		Vector3.new(1.2, 1.2, 1.2) * s, Vector3.new(0, 2.05 * s, 0),
-		Color3.fromRGB(245, 240, 230), Enum.Material.SmoothPlastic)
+		entry.Color, Enum.Material.SmoothPlastic) -- kepala = warna rarity
 	-- Mata hitam + highlight putih (FIX ROUND 3): mata lebih hidup.
 	addBrainrotPart(model, "EyeL",
 		Vector3.new(0.22, 0.28, 0.1) * s, Vector3.new(-0.3 * s, 2.1 * s, 0.62 * s),
@@ -1819,7 +2164,22 @@ local function refreshSlotVisual(baseIdx, slotIdx)
 		return
 	end
 	model.Parent = Workspace
-	model:PivotTo(CFrame.new(pos))
+	-- FITUR INDEX (20 Nov, perintah bos "brain klo di base saling
+	-- berhadapan"): model pedestal menghadap ke TENGAH base-nya
+	-- sendiri. Muka model = sisi mata (sumbu +Z lokal): yaw =
+	-- atan2(dx, dz) dari arah pedestal -> pusat base, jadi pedestal
+	-- yang berseberangan saling berhadapan. HANYA pedestal base —
+	-- conveyor, dibawa, peti, pameran tidak diubah arahnya.
+	local yaw = 0
+	local center = World.BaseCenter and World.BaseCenter[baseIdx]
+	if center ~= nil then
+		local dx = center.X - pos.X
+		local dz = center.Z - pos.Z
+		if dx ~= 0 or dz ~= 0 then
+			yaw = math.atan2(dx, dz)
+		end
+	end
+	model:PivotTo(CFrame.new(pos) * CFrame.Angles(0, yaw, 0))
 	visuals.SlotModels[slotIdx] = model
 end
 
@@ -1914,6 +2274,64 @@ local function notifyLoadNotReady(player)
 	end
 end
 
+-- ---------------------------------------------------------------------------
+-- Indeks koleksi (FITUR INDEX, 20 Nov, aturan bos): sel Index kosong
+-- sebelum pemain pernah dapat kind itu, menyala setelah pernah dapat.
+-- Server SATU-SATUNYA yang punya data koleksi (jangan percaya client):
+-- state.Collected = set kind -> true, diisi dari (a) data save saat
+-- load (field Collected + Slots + Carried), (b) ambil conveyor,
+-- (c) klaim peti, (d) curi sukses. Rebirth TIDAK menghapus Collected
+-- ("pernah dapat" bersifat permanen). Disimpan di DataStore bersama
+-- data save biasa (DataStore.buildPayload); dikirim ke client lewat
+-- IndexUpdate sebagai array kind urutan RosterOrder — SELALU set
+-- lengkap (<=35 string), bukan delta, supaya client tidak perlu
+-- menggabungkan. Dikirim saat load selesai DAN tiap ada kind baru.
+-- ---------------------------------------------------------------------------
+
+-- Array kind yang sudah dikoleksi, urutan RosterOrder (deterministik).
+local function collectedToArray(state)
+	local out = {}
+	local collected = (state ~= nil) and state.Collected or nil
+	if type(collected) ~= "table" then
+		return out
+	end
+	for _, kind in ipairs(Config.RosterOrder) do
+		if collected[kind] == true then
+			table.insert(out, kind)
+		end
+	end
+	return out
+end
+
+local function sendIndexUpdate(player)
+	local state = Players[player]
+	if state == nil then
+		return
+	end
+	Remotes.IndexUpdate:FireClient(player, collectedToArray(state))
+end
+
+-- Tandai kind sudah pernah didapat; kirim IndexUpdate HANYA bila kind
+-- ini BARU bagi pemain (sel langsung menyala di client tanpa
+-- buka-tutup panel). Kind tak dikenal diabaikan diam-diam.
+local function markCollected(player, kind)
+	if type(kind) ~= "string" or Config.Roster[kind] == nil then
+		return
+	end
+	local state = Players[player]
+	if state == nil then
+		return
+	end
+	if type(state.Collected) ~= "table" then
+		state.Collected = {}
+	end
+	if state.Collected[kind] == true then
+		return
+	end
+	state.Collected[kind] = true
+	sendIndexUpdate(player)
+end
+
 -- Handler RemoteEvent -> fungsi modul (Main hanya validasi load gating
 -- + meneruskan + menerapkan hasil ke visual; tanpa logika bisnis).
 local function onPlaceRequest(player, slotIdx)
@@ -2002,11 +2420,14 @@ local function onStealRequest(player, baseIdx, slotIdx)
 		notifyLoadNotReady(player)
 		return
 	end
-	local ok, _msg, victim, _item = Steal.trySteal(Players, player, baseIdx, slotIdx, Remotes, World)
+	local ok, _msg, victim, item = Steal.trySteal(Players, player, baseIdx, slotIdx, Remotes, World)
 	if ok and victim ~= nil then
 		refreshSlotVisual(baseIdx, slotIdx)
 		refreshPedestalPrompt(baseIdx, slotIdx)
 		refreshCarriedVisual(player)
+		if item ~= nil then
+			markCollected(player, item.Kind) -- FITUR INDEX: curi sukses = dapat
+		end
 	end
 end
 
@@ -2633,11 +3054,14 @@ local function onClaimRequest(player, crateId)
 		notifyLoadNotReady(player)
 		return
 	end
-	local ok, msg, _item, claimedCrateId = Flood.claimCrate(Players, Crates, player, crateId, newUid)
+	local ok, msg, item, claimedCrateId = Flood.claimCrate(Players, Crates, player, crateId, newUid)
 	Remotes.Notify:FireClient(player, msg)
 	if ok and claimedCrateId ~= nil then
 		destroyCrateModel(claimedCrateId)
 		refreshCarriedVisual(player)
+		if item ~= nil then
+			markCollected(player, item.Kind) -- FITUR INDEX: klaim peti = dapat
+		end
 	end
 end
 
@@ -2695,6 +3119,7 @@ local function onTakeRequest(player, uid)
 	destroyConveyorModel(item.Uid)
 	state.Carried = { Uid = item.Uid, Kind = item.Kind }
 	refreshCarriedVisual(player)
+	markCollected(player, item.Kind) -- FITUR INDEX: ambil conveyor = dapat
 	local rosterEntry = Config.Roster[item.Kind]
 	local displayName = (rosterEntry and rosterEntry.DisplayName) or item.Kind
 	Remotes.Notify:FireClient(player, "Kamu mendapatkan " .. displayName .. "!")
@@ -2713,6 +3138,7 @@ local function onPlayerAdded(player)
 		Base = nil,
 		Slots = {},
 		Carried = nil,
+		Collected = {}, -- FITUR INDEX: set kind -> true (pernah dapat)
 		Locked = false,
 		LockExpiresAt = nil,
 		LastStealAt = 0,
@@ -2764,6 +3190,25 @@ local function onPlayerAdded(player)
 			if data.Carried ~= nil then
 				current.Carried = { Uid = data.Carried.Uid, Kind = data.Carried.Kind }
 			end
+			-- FITUR INDEX: benih Collected dari save — field Collected
+			-- (sudah dinormalisasi DataStore) + kind di Slots/Carried
+			-- (save lama tanpa field Collected tetap terhitung).
+			current.Collected = {}
+			if type(data.Collected) == "table" then
+				for _, kind in ipairs(data.Collected) do
+					if type(kind) == "string" and Config.Roster[kind] ~= nil then
+						current.Collected[kind] = true
+					end
+				end
+			end
+			for _, item in pairs(current.Slots) do
+				if item ~= nil and Config.Roster[item.Kind] ~= nil then
+					current.Collected[item.Kind] = true
+				end
+			end
+			if current.Carried ~= nil and Config.Roster[current.Carried.Kind] ~= nil then
+				current.Collected[current.Carried.Kind] = true
+			end
 			current.LoadStatus = "ok"
 			if current.Base ~= nil then
 				for i = 1, Config.SLOT_COUNT do
@@ -2780,6 +3225,10 @@ local function onPlayerAdded(player)
 			current.LoadStatus = status
 			Remotes.Notify:FireClient(player, "Data simpanan gagal dimuat — progres sesi ini tidak akan disimpan. Coba relog nanti.")
 		end
+		-- FITUR INDEX: kirim set Collected awal ke client apa pun
+		-- status load-nya (baru = kosong 0/35; ok = dari save; gagal =
+		-- sesi saja, kosong sampai ada yang didapat).
+		sendIndexUpdate(player)
 	end)
 end
 

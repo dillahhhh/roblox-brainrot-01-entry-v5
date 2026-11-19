@@ -7,23 +7,79 @@
 
 local Config = {}
 
--- Roster Brainrot: 7 tingkat rarity.
--- FIX ROUND 7 (20 Nov, foto referensi): roster jadi HIBRIDA
--- BINATANG + SAYURAN — key + DisplayName berubah, harga/income/
--- rarity/warna TETAP. Key lama dipetakan ke baru saat load
--- (DataStore LEGACY_KIND_MAP), bukan dihapus diam-diam.
+-- Roster Brainrot: 35 jenis — 7 tingkat rarity x 5 jenis per tier
+-- (FITUR INDEX, 20 Nov, perintah bos "3 setiap rank" lalu diubah
+-- "5 setiap rank"). FIX ROUND 7 (20 Nov, foto referensi): roster
+-- jadi HIBRIDA BINATANG + SAYURAN — key + DisplayName berubah,
+-- harga/income/rarity/warna TETAP. Key lama dipetakan ke baru saat
+-- load (DataStore LEGACY_KIND_MAP), bukan dihapus diam-diam.
+-- 7 kind lama TETAP (key, harga, income, rarity, warna tidak
+-- berubah); 28 kind baru hibrida binatang + sayuran gaya Nusantara.
+-- Harga baru diinterpolasi di dalam tier-nya (bertahap, tidak
+-- tabrakan); income = harga/10 (Common–Mythic) dan harga/5
+-- (Ultra Rare, mengikuti Gajah Kol); Sell = 50% harga.
+-- Warna badan = warna rarity (perintah bos "warna sesuai rank
+-- aja deh"): semua kind satu tier satu warna badan — rarity
+-- langsung kebaca dari warna badan, bukan dari warna hewan.
 -- Tiap entri: DisplayName, Price (harga beli), Income (per detik),
--- Sell (50% harga beli), Color (warna rarity), SpawnMax (batas atas
+-- Sell (50% harga beli), Color (warna rarity), RollMax (batas atas
 -- roll 1-1000; peluang kumulatif, lihat RollMax di bawah).
 Config.Roster = {
+	-- Common (total 30%): 5 x 6% — RollMax 60/120/180/240/300.
+	BebekBayam = {
+		DisplayName = "Bebek Bayam",
+		Rarity = "Common",
+		Price = 40,
+		Income = 4,
+		Sell = 20,
+		Color = Color3.fromRGB(0, 200, 230),
+		RollMax = 60,
+	},
 	AyamWortel = {
 		DisplayName = "Ayam Wortel",
 		Rarity = "Common",
 		Price = 50,
 		Income = 5,
 		Sell = 25,
-		Color = Color3.fromRGB(220, 220, 220),
+		Color = Color3.fromRGB(0, 200, 230),
+		RollMax = 120,
+	},
+	KambingSawi = {
+		DisplayName = "Kambing Sawi",
+		Rarity = "Common",
+		Price = 60,
+		Income = 6,
+		Sell = 30,
+		Color = Color3.fromRGB(0, 200, 230),
+		RollMax = 180,
+	},
+	KelinciSeledri = {
+		DisplayName = "Kelinci Seledri",
+		Rarity = "Common",
+		Price = 80,
+		Income = 8,
+		Sell = 40,
+		Color = Color3.fromRGB(0, 200, 230),
+		RollMax = 240,
+	},
+	ItikJagung = {
+		DisplayName = "Itik Jagung",
+		Rarity = "Common",
+		Price = 90,
+		Income = 9,
+		Sell = 45,
+		Color = Color3.fromRGB(0, 200, 230),
 		RollMax = 300,
+	},
+	-- Uncommon (total 25%): 5 x 5% — RollMax 350/400/450/500/550.
+	MonyetPisang = {
+		DisplayName = "Monyet Pisang",
+		Rarity = "Uncommon",
+		Price = 120,
+		Income = 12,
+		Sell = 60,
+		Color = Color3.fromRGB(110, 220, 110),
+		RollMax = 350,
 	},
 	BabiLabu = {
 		DisplayName = "Babi Labu",
@@ -32,7 +88,53 @@ Config.Roster = {
 		Income = 15,
 		Sell = 75,
 		Color = Color3.fromRGB(110, 220, 110),
+		RollMax = 400,
+	},
+	SapiJagung = {
+		DisplayName = "Sapi Jagung",
+		Rarity = "Uncommon",
+		Price = 170,
+		Income = 17,
+		Sell = 85,
+		Color = Color3.fromRGB(110, 220, 110),
+		RollMax = 450,
+	},
+	KudaKentang = {
+		DisplayName = "Kuda Kentang",
+		Rarity = "Uncommon",
+		Price = 190,
+		Income = 19,
+		Sell = 95,
+		Color = Color3.fromRGB(110, 220, 110),
+		RollMax = 500,
+	},
+	DombaTimun = {
+		DisplayName = "Domba Timun",
+		Rarity = "Uncommon",
+		Price = 210,
+		Income = 21,
+		Sell = 105,
+		Color = Color3.fromRGB(110, 220, 110),
 		RollMax = 550,
+	},
+	-- Rare (total 20%): 5 x 4% — RollMax 590/630/670/710/750.
+	TupaiKacang = {
+		DisplayName = "Tupai Kacang",
+		Rarity = "Rare",
+		Price = 340,
+		Income = 34,
+		Sell = 170,
+		Color = Color3.fromRGB(65, 165, 255),
+		RollMax = 590,
+	},
+	LandakPaprika = {
+		DisplayName = "Landak Paprika",
+		Rarity = "Rare",
+		Price = 370,
+		Income = 37,
+		Sell = 185,
+		Color = Color3.fromRGB(65, 165, 255),
+		RollMax = 630,
 	},
 	AnjingBrokoli = {
 		DisplayName = "Anjing Brokoli",
@@ -41,7 +143,44 @@ Config.Roster = {
 		Income = 40,
 		Sell = 200,
 		Color = Color3.fromRGB(65, 165, 255),
+		RollMax = 670,
+	},
+	RubahUbi = {
+		DisplayName = "Rubah Ubi",
+		Rarity = "Rare",
+		Price = 430,
+		Income = 43,
+		Sell = 215,
+		Color = Color3.fromRGB(65, 165, 255),
+		RollMax = 710,
+	},
+	MusangSawi = {
+		DisplayName = "Musang Sawi",
+		Rarity = "Rare",
+		Price = 470,
+		Income = 47,
+		Sell = 235,
+		Color = Color3.fromRGB(65, 165, 255),
 		RollMax = 750,
+	},
+	-- Epic (total 12%): 5 x 2.4% — RollMax 774/798/822/846/870.
+	BurungPaprika = {
+		DisplayName = "Burung Paprika",
+		Rarity = "Epic",
+		Price = 850,
+		Income = 85,
+		Sell = 425,
+		Color = Color3.fromRGB(185, 85, 255),
+		RollMax = 774,
+	},
+	PandaUbi = {
+		DisplayName = "Panda Ubi",
+		Rarity = "Epic",
+		Price = 920,
+		Income = 92,
+		Sell = 460,
+		Color = Color3.fromRGB(185, 85, 255),
+		RollMax = 798,
 	},
 	KucingCabai = {
 		DisplayName = "Kucing Cabai",
@@ -50,7 +189,44 @@ Config.Roster = {
 		Income = 100,
 		Sell = 500,
 		Color = Color3.fromRGB(185, 85, 255),
+		RollMax = 822,
+	},
+	ElangBawang = {
+		DisplayName = "Elang Bawang",
+		Rarity = "Epic",
+		Price = 1100,
+		Income = 110,
+		Sell = 550,
+		Color = Color3.fromRGB(185, 85, 255),
+		RollMax = 846,
+	},
+	KoalaSingkong = {
+		DisplayName = "Koala Singkong",
+		Rarity = "Epic",
+		Price = 1250,
+		Income = 125,
+		Sell = 625,
+		Color = Color3.fromRGB(185, 85, 255),
 		RollMax = 870,
+	},
+	-- Legendary (total 7%): 5 x 1.4% — RollMax 884/898/912/926/940.
+	SingaJahe = {
+		DisplayName = "Singa Jahe",
+		Rarity = "Legendary",
+		Price = 2500,
+		Income = 250,
+		Sell = 1250,
+		Color = Color3.fromRGB(255, 140, 40),
+		RollMax = 884,
+	},
+	BadakKunyit = {
+		DisplayName = "Badak Kunyit",
+		Rarity = "Legendary",
+		Price = 2800,
+		Income = 280,
+		Sell = 1400,
+		Color = Color3.fromRGB(255, 140, 40),
+		RollMax = 898,
 	},
 	BeruangTerong = {
 		DisplayName = "Beruang Terong",
@@ -59,7 +235,44 @@ Config.Roster = {
 		Income = 300,
 		Sell = 1500,
 		Color = Color3.fromRGB(255, 140, 40),
+		RollMax = 912,
+	},
+	MacanSelada = {
+		DisplayName = "Macan Selada",
+		Rarity = "Legendary",
+		Price = 3300,
+		Income = 330,
+		Sell = 1650,
+		Color = Color3.fromRGB(255, 140, 40),
+		RollMax = 926,
+	},
+	BantengPare = {
+		DisplayName = "Banteng Pare",
+		Rarity = "Legendary",
+		Price = 3700,
+		Income = 370,
+		Sell = 1850,
+		Color = Color3.fromRGB(255, 140, 40),
 		RollMax = 940,
+	},
+	-- Mythic (total 4%): 5 x 0.8% — RollMax 948/956/964/972/980.
+	NagaSelada = {
+		DisplayName = "Naga Selada",
+		Rarity = "Mythic",
+		Price = 10000,
+		Income = 1000,
+		Sell = 5000,
+		Color = Color3.fromRGB(255, 65, 65),
+		RollMax = 948,
+	},
+	GarudaBawang = {
+		DisplayName = "Garuda Bawang",
+		Rarity = "Mythic",
+		Price = 11000,
+		Income = 1100,
+		Sell = 5500,
+		Color = Color3.fromRGB(255, 65, 65),
+		RollMax = 956,
 	},
 	HarimauTomat = {
 		DisplayName = "Harimau Tomat",
@@ -68,7 +281,44 @@ Config.Roster = {
 		Income = 1200,
 		Sell = 6000,
 		Color = Color3.fromRGB(255, 65, 65),
+		RollMax = 964,
+	},
+	PhoenixKunyit = {
+		DisplayName = "Phoenix Kunyit",
+		Rarity = "Mythic",
+		Price = 14000,
+		Income = 1400,
+		Sell = 7000,
+		Color = Color3.fromRGB(255, 65, 65),
+		RollMax = 972,
+	},
+	KirinDurian = {
+		DisplayName = "Kirin Durian",
+		Rarity = "Mythic",
+		Price = 16000,
+		Income = 1600,
+		Sell = 8000,
+		Color = Color3.fromRGB(255, 65, 65),
 		RollMax = 980,
+	},
+	-- Ultra Rare (total 2%): 5 x 0.4% — RollMax 984/988/992/996/1000.
+	KomodoSingkong = {
+		DisplayName = "Komodo Singkong",
+		Rarity = "Ultra Rare",
+		Price = 40000,
+		Income = 8000,
+		Sell = 20000,
+		Color = Color3.fromRGB(255, 225, 0),
+		RollMax = 984,
+	},
+	PausUbi = {
+		DisplayName = "Paus Ubi",
+		Rarity = "Ultra Rare",
+		Price = 45000,
+		Income = 9000,
+		Sell = 22500,
+		Color = Color3.fromRGB(255, 225, 0),
+		RollMax = 988,
 	},
 	GajahKol = {
 		DisplayName = "Gajah Kol",
@@ -77,24 +327,72 @@ Config.Roster = {
 		Income = 10000,
 		Sell = 25000,
 		Color = Color3.fromRGB(255, 225, 0),
+		RollMax = 992,
+	},
+	OrangutanDurian = {
+		DisplayName = "Orangutan Durian",
+		Rarity = "Ultra Rare",
+		Price = 65000,
+		Income = 13000,
+		Sell = 32500,
+		Color = Color3.fromRGB(255, 225, 0),
+		RollMax = 996,
+	},
+	CendrawasihDurian = {
+		DisplayName = "Cendrawasih Durian",
+		Rarity = "Ultra Rare",
+		Price = 80000,
+		Income = 16000,
+		Sell = 40000,
+		Color = Color3.fromRGB(255, 225, 0),
 		RollMax = 1000,
 	},
 }
 
 -- Urutan roll spawn (1-1000): entri pertama yang RollMax-nya >= roll menang.
--- FIX ROUND 7: peluang BARU — Common 30%, Uncommon 25%, Rare 20%,
+-- FIX ROUND 7: peluang tier — Common 30%, Uncommon 25%, Rare 20%,
 -- Epic 12%, Legendary 7%, Mythic 4%, Ultra Rare 2% (dulu 45/25/18/
--- 8/2.8/1/0.2 — conveyor kebanyakan Common). Harga/income, interval
+-- 8/2.8/1/0.2 — conveyor kebanyakan Common). FITUR INDEX (20 Nov):
+-- tiap tier dibagi RATA ke 5 kind-nya (Common 6% per kind, dst),
+-- TOTAL tiap tier TIDAK berubah. Harga/income, interval
 -- spawn 3.5 detik, kecepatan conveyor 16, dan aturan flood/peti
 -- TIDAK berubah.
 Config.RosterOrder = {
+	"BebekBayam",
 	"AyamWortel",
+	"KambingSawi",
+	"KelinciSeledri",
+	"ItikJagung",
+	"MonyetPisang",
 	"BabiLabu",
+	"SapiJagung",
+	"KudaKentang",
+	"DombaTimun",
+	"TupaiKacang",
+	"LandakPaprika",
 	"AnjingBrokoli",
+	"RubahUbi",
+	"MusangSawi",
+	"BurungPaprika",
+	"PandaUbi",
 	"KucingCabai",
+	"ElangBawang",
+	"KoalaSingkong",
+	"SingaJahe",
+	"BadakKunyit",
 	"BeruangTerong",
+	"MacanSelada",
+	"BantengPare",
+	"NagaSelada",
+	"GarudaBawang",
 	"HarimauTomat",
+	"PhoenixKunyit",
+	"KirinDurian",
+	"KomodoSingkong",
+	"PausUbi",
 	"GajahKol",
+	"OrangutanDurian",
+	"CendrawasihDurian",
 }
 
 -- Ekonomi + progression
@@ -241,26 +539,42 @@ Config.CART_SIGN_BOARD_WIDTH = 3.2
 Config.CART_SIGN_BOARD_Y = 1.1
 Config.CART_SIGN_PIXELS_PER_STUD = 100
 
--- Meja pameran di sebelah spawn (FIX ROUND 8, 20 Nov): satu meja
--- panjang di TIMUR spawn (pusat x = 32, z = 168 — sejajar spawn,
--- 6 stud di timur tepi SpawnLocation x = 8), memajang KE-7 jenis
--- Brainrot (RosterOrder) dalam 2 baris (depan 4, belakang 3).
--- Dekorasi SAJA: model statis (anchored, createBrainrotModel yang
--- sama — bentuk + aura + label identik), TANPA ProximityPrompt,
+-- Meja pameran di sebelah spawn (FIX ROUND 8, 20 Nov; FITUR INDEX
+-- 20 Nov: 35 kind, RAPI + BERHIASAN — perintah bos "jangan lumpuk",
+-- "kasi hiasan apa kek"): satu meja BESAR di TIMUR spawn (pusat
+-- x = 32, z = 162 — 6 stud di utara spawn, masih sejajar), memajang
+-- KE-35 jenis Brainrot (RosterOrder) dalam 7 baris x 5 kolom —
+-- SATU TIER SATU BARIS (baris 1 = 5 Common, baris 2 = 5 Uncommon,
+-- dst) dengan jarak lega (kolom 7 stud, baris 6 stud) supaya tiap
+-- Brainrot kelihatan utuh dari arah spawn (barat). Dekorasi: piringan
+-- warna rarity di bawah tiap model, trim emas di pinggir meja, label
+-- nama tier di ujung barat tiap baris, papan "PAMERAN BRAINROT",
+-- 4 tiang lampion di sudut + 2 tanaman pot di sisi barat. SEMUA
+-- hiasan dekorasi saja (CanCollide false, 0 prompt). Model statis
+-- (anchored, createBrainrotModel yang sama), TANPA ProximityPrompt,
 -- TANPA RemoteEvent, TIDAK masuk ekonomi/conveyor/pedestal/peti.
 -- Meja TIDAK menutup jalur: jalan keluar spawn ke utara (x ~0,
--- z 168 -> 127) bebas; pemain ke base jalan dulu ke utara (z < 161)
--- baru belok timur/barat, meja di z 161.5..174.5 tidak dilewati.
--- plaza y = 0.6; kaki meja 0.6..2.5, alas atas tengah y = 2.75
--- (tebal 0.5) — permukaan pajang y = 3.0.
+-- z 168 -> 127) bebas; pemain ke base jalan dulu ke utara (z < 140)
+-- baru belok timur/barat, meja di z 140..184 tidak dilewati. Meja
+-- 44 stud lebar (x 10..54, masih di atas plaza x ±55) dan 44 stud
+-- dalam (z 140..184); ujung selatan meja (z > 182.5) melewati tepi
+-- plaza ke atas terrain (y = 0) — kaki meja dibuat dari y = 0
+-- (bukan dari plaza y = 0.6) supaya tetap napak. Kios selatan di
+-- (35, 188) berjarak 2.5 stud dari tepi meja (z 184) — tidak
+-- bersentuhan. Plaza y = 0.6; alas atas tengah y = 2.75 (tebal 0.5)
+-- — permukaan pajang y = 3.0, model berdiri di atas piringan
+-- (y = 3.2).
 Config.EXHIBITION_TABLE_CENTER_X = 32
-Config.EXHIBITION_TABLE_CENTER_Z = 168
-Config.EXHIBITION_TABLE_TOP_SIZE = Vector3.new(26, 0.5, 13)
+Config.EXHIBITION_TABLE_CENTER_Z = 162
+Config.EXHIBITION_TABLE_TOP_SIZE = Vector3.new(44, 0.5, 44)
 Config.EXHIBITION_TABLE_TOP_Y = 2.75
-Config.EXHIBITION_TABLE_LEG_HEIGHT = 1.9
+Config.EXHIBITION_TABLE_LEG_HEIGHT = 2.5
 Config.EXHIBITION_MODEL_SCALE = 2.0
-Config.EXHIBITION_SPACING_X = 6
-Config.EXHIBITION_ROW_Z = 3.2
+Config.EXHIBITION_SPACING_X = 7
+Config.EXHIBITION_COLS = 5
+Config.EXHIBITION_ROW_SPACING_Z = 6
+Config.EXHIBITION_DISC_DIAMETER = 5
+Config.EXHIBITION_DISC_HEIGHT = 0.2
 Config.EXHIBITION_SIGN_TEXT = "PAMERAN BRAINROT"
 Config.EXHIBITION_SIGN_TEXT_SIZE = 28
 
