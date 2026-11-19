@@ -126,7 +126,7 @@ end
 
 -- ---------------------------------------------------------------------------
 -- Bangun dunia 3D (runtime). Urutan: lighting -> terrain -> conveyor ->
--- plaza + SpawnLocation -> bases -> gates -> city -> trees -> lamps.
+-- plaza + SpawnLocation -> bases -> gates -> forest -> trees -> lamps.
 -- ---------------------------------------------------------------------------
 
 local function makePart(name, size, position, material, color)
@@ -657,45 +657,97 @@ local function buildGates()
 	makePart("FenceS", Vector3.new(336, 3, 0.5), Vector3.new(0, 1.5, 208), Enum.Material.Wood, Color3.fromRGB(110, 80, 50))
 end
 
-local function buildCity()
-	-- Bangunan kota di kejauhan (sekitar x = ±162, z = ±202) sebagai latar.
-	-- Posisi + tinggi deterministik (aritmetika, tanpa math.random).
-	local spots = {}
-	for i = 1, 6 do
-		table.insert(spots, { x = -162, z = -180 + (i - 1) * 72 })
-		table.insert(spots, { x = 162, z = -180 + (i - 1) * 72 })
+local function buildForest()
+	-- Tepi hutan lebat sebagai latar (FIX ROUND 5, 20 Nov — menggantikan
+	-- bangunan kota di kejauhan; perintah bos 02:33 WIB): pohon tinggi
+	-- berlapis di keempat tepi map (sekitar x = ±162, z = ±202, seperti
+	-- posisi kota lama), di LUAR area main — tidak menghalangi conveyor /
+	-- base / plaza / jalan pemain. Lapisan depan lebih gelap, lapisan
+	-- belakang lebih terang kena cahaya (seperti foto referensi); semak
+	-- + rumpun rumput di kaki tiap pohon. Semua posisi + tinggi
+	-- deterministik (aritmetika, tanpa math.random).
+	local frontLeafColors = {
+		Color3.fromRGB(28, 85, 42),
+		Color3.fromRGB(35, 100, 48),
+		Color3.fromRGB(24, 72, 38),
+	}
+	local backLeafColors = {
+		Color3.fromRGB(95, 160, 70),
+		Color3.fromRGB(120, 180, 90),
+		Color3.fromRGB(70, 140, 60),
+	}
+	local trunkColor = Color3.fromRGB(90, 60, 35)
+	local bushColor = Color3.fromRGB(45, 110, 55)
+	local grassColor = Color3.fromRGB(190, 170, 90)
+
+	local function makeForestTree(x, z, index, isBack)
+		local height = 20 + ((index * 37) % 21) -- tinggi 20-40 stud
+		local leafColors = isBack and backLeafColors or frontLeafColors
+		local leafColor = leafColors[((index - 1) % #leafColors) + 1]
+		local trunk = makePart("ForestTrunk",
+			Vector3.new(1.4, height, 1.4),
+			Vector3.new(x, height / 2, z),
+			Enum.Material.Wood, trunkColor)
+		trunk.CanCollide = false
+		-- 3 bola daun bertumpuk (bawah besar, atas kecil): tajuk berlapis.
+		local ballSizes = { 0.5, 0.4, 0.3 }
+		local ballHeights = { 0.55, 0.78, 0.95 }
+		for b = 1, 3 do
+			local ball = Instance.new("Part")
+			ball.Name = "ForestLeaves"
+			ball.Shape = Enum.PartType.Ball
+			local ballSize = height * ballSizes[b]
+			ball.Size = Vector3.new(ballSize, ballSize, ballSize)
+			ball.Position = Vector3.new(x, height * ballHeights[b], z)
+			ball.Material = Enum.Material.SmoothPlastic
+			ball.Color = leafColor
+			ball.Anchored = true
+			ball.CanCollide = false
+			ball.Parent = Workspace
+		end
+		-- Semak di kaki pohon + rumpun rumput kering di sebelahnya.
+		local bushSize = 2 + ((index * 11) % 2)
+		local bush = Instance.new("Part")
+		bush.Name = "ForestBush"
+		bush.Shape = Enum.PartType.Ball
+		bush.Size = Vector3.new(bushSize, bushSize * 0.8, bushSize)
+		bush.Position = Vector3.new(x + 2.5, bushSize * 0.4, z + 1.5)
+		bush.Material = Enum.Material.SmoothPlastic
+		bush.Color = bushColor
+		bush.Anchored = true
+		bush.CanCollide = false
+		bush.Parent = Workspace
+		local grass = makePart("ForestGrass",
+			Vector3.new(1.2, 1.6, 0.4),
+			Vector3.new(x - 2.5, 0.8, z - 1.5),
+			Enum.Material.Grass, grassColor)
+		grass.CanCollide = false
 	end
-	for i = 1, 5 do
-		table.insert(spots, { x = -120 + (i - 1) * 60, z = -202 })
-		table.insert(spots, { x = -120 + (i - 1) * 60, z = 202 })
+
+	local treeIndex = 0
+	-- Sisi barat/timur: 2 lapis (depan x = ±158 gelap, belakang x = ±168
+	-- terang), z berjajar selang-seling agar tajuk saling menutupi.
+	for _, side in ipairs({ -1, 1 }) do
+		for i = 1, 8 do
+			treeIndex = treeIndex + 1
+			makeForestTree(side * 158, -168 + (i - 1) * 48, treeIndex, false)
+		end
+		for i = 1, 7 do
+			treeIndex = treeIndex + 1
+			makeForestTree(side * 168, -144 + (i - 1) * 48, treeIndex, true)
+		end
 	end
-	for i, spot in ipairs(spots) do
-		local height = 20 + ((i * 37) % 40)
-		local width = 14 + ((i * 13) % 10)
-		-- Variasi warna fasad malam (4 warna dusk, deterministik).
-		local cityColors = {
-			Color3.fromRGB(52, 52, 68),
-			Color3.fromRGB(68, 56, 72),
-			Color3.fromRGB(48, 62, 78),
-			Color3.fromRGB(70, 52, 52),
-		}
-		local facade = cityColors[((i - 1) % #cityColors) + 1]
-		makePart(
-			"CityBuilding",
-			Vector3.new(width, height, width),
-			Vector3.new(spot.x, height / 2, spot.z),
-			Enum.Material.Concrete,
-			facade
-		)
-		-- Tepi atap menyala hangat (strip Neon di puncak gedung).
-		local roofTrim = makePart(
-			"CityRoofTrim",
-			Vector3.new(width + 0.4, 0.4, width + 0.4),
-			Vector3.new(spot.x, height + 0.2, spot.z),
-			Enum.Material.Neon,
-			Color3.fromRGB(255, 180, 90)
-		)
-		roofTrim.CanCollide = false
+	-- Sisi utara/selatan: 2 lapis (depan z = ±196 gelap, belakang
+	-- z = ±206 terang).
+	for _, side in ipairs({ -1, 1 }) do
+		for i = 1, 6 do
+			treeIndex = treeIndex + 1
+			makeForestTree(-125 + (i - 1) * 50, side * 196, treeIndex, false)
+		end
+		for i = 1, 5 do
+			treeIndex = treeIndex + 1
+			makeForestTree(-100 + (i - 1) * 50, side * 206, treeIndex, true)
+		end
 	end
 end
 
@@ -882,7 +934,7 @@ local function buildWorld()
 	buildPlaza()
 	buildBases()
 	buildGates()
-	buildCity()
+	buildForest()
 	buildTrees()
 	buildLamps()
 	buildLanterns()
@@ -1054,7 +1106,9 @@ local CarriedModels = {} -- [Player] -> Model Brainrot yang dibawa | nil
 
 -- Ciri khas tiap Brainrot (DESIGN.md 3): badan + kepala + mata +
 -- satu ciri pembeda. Ukuran/offset dalam satuan skala 1 (dikalikan
--- scale saat dibuat: pedestal 2.0, dibawa 1.4, peti 1.6 di Stage 4).
+-- scale saat dibuat: pedestal/conveyor Config.BRAINROT_SCALE_CONVEYOR
+-- (2.6), dibawa Config.BRAINROT_SCALE_CARRIED (1.8), peti
+-- Config.BRAINROT_SCALE_CRATE (2.1) — FIX ROUND 5, +30%.
 -- FIX ROUND 3: detail diperkaya per jenis (sayap/ekor/cangkir/telinga/
 -- gong/dll) — jenis, roster, harga, dan income TIDAK berubah.
 -- spec.Shape opsional: Enum.PartType (Ball untuk telinga/gong/dll).
@@ -1185,9 +1239,13 @@ local function createBrainrotModel(kind, scale)
 		end
 	end
 	-- Label nama + rarity + income di atas model.
+	-- FIX ROUND 5: TextScaled dimatikan, TextSize tetap 16 (dulu teks
+	-- memenuhi label 180x64); ukuran label dari Config (160x44).
+	-- StudsOffsetWorldSpace tetap 1.6 * s agar label selalu di atas
+	-- kepala model yang lebih besar.
 	local label = Instance.new("BillboardGui")
 	label.Name = "BrainrotLabel"
-	label.Size = UDim2.fromOffset(180, 64)
+	label.Size = UDim2.fromOffset(Config.BRAINROT_LABEL_WIDTH, Config.BRAINROT_LABEL_HEIGHT)
 	label.StudsOffsetWorldSpace = Vector3.new(0, 1.6 * s, 0)
 	label.AlwaysOnTop = false
 	label.LightInfluence = 0
@@ -1198,15 +1256,18 @@ local function createBrainrotModel(kind, scale)
 	text.BackgroundTransparency = 1
 	text.Text = entry.DisplayName .. "\n" .. entry.Rarity .. " - $" .. tostring(entry.Income) .. "/dtk"
 	text.TextColor3 = Color3.fromRGB(255, 255, 255)
-	text.TextScaled = true
+	text.TextScaled = false
+	text.TextSize = Config.BRAINROT_LABEL_TEXT_SIZE
+	text.TextWrapped = true
 	text.Font = Enum.Font.GothamBold
 	text.Parent = label
 	model.PrimaryPart = body
 	return model
 end
 
--- Perbarui visual pedestal: model Brainrot skala 2.0 + label kalau slot
--- terisi, kosong kalau tidak.
+-- Perbarui visual pedestal: model Brainrot skala
+-- Config.BRAINROT_SCALE_CONVEYOR (2.6) + label kalau slot terisi,
+-- kosong kalau tidak.
 local function refreshSlotVisual(baseIdx, slotIdx)
 	local visuals = BaseVisuals[baseIdx]
 	if not visuals then
@@ -1237,7 +1298,7 @@ local function refreshSlotVisual(baseIdx, slotIdx)
 	if not pos then
 		return
 	end
-	local model = createBrainrotModel(item.Kind, 2.0)
+	local model = createBrainrotModel(item.Kind, Config.BRAINROT_SCALE_CONVEYOR)
 	if not model then
 		return
 	end
@@ -1254,10 +1315,11 @@ local function destroyCarriedModel(player)
 	end
 end
 
--- Pasang/lepas model Brainrot yang dibawa pemain (skala 1.4, di atas
--- kepala, mengikuti karakter lewat Weld). Dipanggil setelah place/
--- sell/rebirth, setelah load memulihkan Carried, dan setiap kali
--- karakter (re)spawn (CharacterAdded, DESIGN.md 8).
+-- Pasang/lepas model Brainrot yang dibawa pemain (skala
+-- Config.BRAINROT_SCALE_CARRIED = 1.8, di atas kepala, mengikuti
+-- karakter lewat Weld). Dipanggil setelah place/sell/rebirth, setelah
+-- load memulihkan Carried, dan setiap kali karakter (re)spawn
+-- (CharacterAdded, DESIGN.md 8).
 local function refreshCarriedVisual(player)
 	local state = Players[player]
 	destroyCarriedModel(player)
@@ -1272,7 +1334,7 @@ local function refreshCarriedVisual(player)
 	if not hrp then
 		return
 	end
-	local model = createBrainrotModel(state.Carried.Kind, 1.4)
+	local model = createBrainrotModel(state.Carried.Kind, Config.BRAINROT_SCALE_CARRIED)
 	if not model then
 		return
 	end
@@ -1567,11 +1629,12 @@ local function rollBrainrotKind()
 	return "GajahGamelan"
 end
 
--- Model Brainrot conveyor (skala 2.0 + label) dari entri
--- ConveyorItems; dihancurkan saat item tersapu flood (dari daftar
--- swept hasil Flood.tick) atau mencapai ujung conveyor.
+-- Model Brainrot conveyor (skala Config.BRAINROT_SCALE_CONVEYOR = 2.6
+-- + label) dari entri ConveyorItems; dihancurkan saat item tersapu
+-- flood (dari daftar swept hasil Flood.tick) atau mencapai ujung
+-- conveyor.
 local function createConveyorModel(item)
-	local model = createBrainrotModel(item.Kind, 2.0)
+	local model = createBrainrotModel(item.Kind, Config.BRAINROT_SCALE_CONVEYOR)
 	if not model then
 		return nil
 	end
@@ -1584,7 +1647,7 @@ local function createConveyorModel(item)
 	prompt.ActionText = "Ambil"
 	prompt.ObjectText = (rosterEntry and rosterEntry.DisplayName) or item.Kind
 	prompt.HoldDuration = 0
-	prompt.MaxActivationDistance = 12
+	prompt.MaxActivationDistance = Config.TAKE_RANGE -- FIX ROUND 5: 24 stud, kedua jalur terjangkau dari kedua sisi
 	prompt:SetAttribute("PromptKind", "Conveyor")
 	prompt:SetAttribute("Uid", item.Uid)
 	prompt.Parent = model.PrimaryPart
@@ -1668,7 +1731,7 @@ local CRATE_BOX_COLORS = {
 }
 
 -- Model peti (MAIN-SERVER-PLAN §3): kotak + model Brainrot di
--- atasnya (skala 1.6) + label + ProximityPrompt "Buka Peti"
+-- atasnya (skala Config.BRAINROT_SCALE_CRATE = 2.1) + label +
 -- (tahan 0.5 detik) dengan atribut CrateId. Peti Tumpah mendapat
 -- cahaya emas (PointLight). Flood tidak pernah membuat Instance
 -- peti — Main yang membuatnya dari entri CrateState.
@@ -1687,9 +1750,10 @@ local function createCrateModel(crate)
 	box.CanCollide = true
 	box.Parent = model
 
-	-- Brainrot di dalam peti, di atas kotak (skala 1.6).
+	-- Brainrot di dalam peti, di atas kotak (skala
+	-- Config.BRAINROT_SCALE_CRATE = 2.1).
 	local brainrotKind = crate.BrainrotKind or crate.Kind
-	local top = createBrainrotModel(brainrotKind, 1.6)
+	local top = createBrainrotModel(brainrotKind, Config.BRAINROT_SCALE_CRATE)
 	if top then
 		top.Parent = model
 		top:PivotTo(CFrame.new(crate.Position + Vector3.new(0, 2, 0)))
@@ -2042,9 +2106,11 @@ end
 -- berurutan — (a) load siap (termasuk fallback Studio di isLoadReady),
 -- (b) tangan kosong, (c) UID cocok dengan entri di ConveyorItems,
 -- (d) jarak HumanoidRootPart ke posisi entri ConveyorItems saat itu
--- <= 12 stud. Bila semua lolos, DALAM SATU LANGKAH tanpa yield:
--- hapus entri dari ConveyorItems, hancurkan model conveyor, isi
--- Carried, pasang visual carried, Notify sukses. Pesan sukses memakai
+-- <= Config.TAKE_RANGE (24 stud, FIX ROUND 5 — dulu 12 via
+-- STEAL_RANGE, jalur jauh tidak terjangkau dari tepi seberang).
+-- Bila semua lolos, DALAM SATU LANGKAH tanpa yield: hapus entri dari
+-- ConveyorItems, hancurkan model conveyor, isi Carried, pasang visual
+-- carried, Notify sukses. Pesan sukses memakai
 -- format "Kamu mendapatkan <nama>!" yang sama dengan klaim peti,
 -- sehingga CarryPanel client ter-update lewat listener Notify yang
 -- sudah ada (tanpa event baru).
@@ -2081,7 +2147,7 @@ local function onTakeRequest(player, uid)
 		return
 	end
 	local distance = (hrp.Position - item.Position).Magnitude
-	if distance > Config.STEAL_RANGE then
+	if distance > Config.TAKE_RANGE then
 		Remotes.Notify:FireClient(player, "Terlalu jauh dari conveyor.")
 		return
 	end

@@ -124,6 +124,24 @@ Config.STEAL_ATTEMPT_COOLDOWN = 1
 Config.STEAL_RANGE = 12
 Config.CLAIM_RANGE = 12
 
+-- Ambil Brainrot dari conveyor (FIX ROUND 5, 20 Nov): jangkauan ambil
+-- khusus 24 stud (lebih jauh dari STEAL_RANGE 12) agar kedua jalur
+-- conveyor (x = ±7.5) terjangkau dari kedua sisi conveyor. STEAL_RANGE
+-- (curi dari pedestal) dan CLAIM_RANGE (peti) TIDAK berubah.
+Config.TAKE_RANGE = 24
+
+-- Skala visual Brainrot (FIX ROUND 5, 20 Nov): +30% dari sebelumnya
+-- (conveyor/pedestal 2.0 -> 2.6, dibawa 1.4 -> 1.8, atas peti 1.6 -> 2.1).
+Config.BRAINROT_SCALE_CONVEYOR = 2.6
+Config.BRAINROT_SCALE_CARRIED = 1.8
+Config.BRAINROT_SCALE_CRATE = 2.1
+
+-- Label nama Brainrot (FIX ROUND 5, 20 Nov): TextScaled dimatikan,
+-- TextSize tetap 16 (dulu teks memenuhi label 180x64).
+Config.BRAINROT_LABEL_WIDTH = 160
+Config.BRAINROT_LABEL_HEIGHT = 44
+Config.BRAINROT_LABEL_TEXT_SIZE = 16
+
 -- Batas aman base saat flood (setengah ukuran lantai base 56 x 46)
 Config.SAFE_HALF_X = 28
 Config.SAFE_HALF_Z = 23
