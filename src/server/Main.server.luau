@@ -9,6 +9,10 @@
 -- (income tick + lock expiry tick + flood tick + crate expiry
 -- tick) plus loop conveyor 0,1 detik (spawn tiap SPAWN_INTERVAL
 -- + gerak Brainrot sepanjang conveyor).
+-- Stage 5: atribut prompt pedestal dipelihara server
+-- (refreshPedestalPrompt: OwnerUserId saat base di-assign/dilepas,
+-- SlotFilled saat slot terisi/dikosongkan, Enabled saat base ada
+-- pemilik) agar client bisa melabel Taruh/Jual/Curi dari atribut.
 -- Flood di-require Stage 4: Main pemilik TUNGGAL loop flood —
 -- floodTick() memanggil Flood.tick SATU kali per detik dan hanya
 -- menerapkan actions yang dikembalikan (tidak menghitung ulang
@@ -77,6 +81,7 @@ end
 -- kaca lock + papan nama pemilik.
 local BaseVisuals = {} -- [baseIdx] -> { GlassParts, OwnerLabel, Headshot }
 local BaseOwner = {} -- [baseIdx] -> Player | nil
+local PedestalPrompts = {} -- [baseIdx][slotIdx] -> ProximityPrompt pedestal
 
 -- ---------------------------------------------------------------------------
 -- RemoteEvents (HANYA Main yang membuat RemoteEvent)
@@ -230,13 +235,15 @@ local function buildOneBase(baseIdx, xCenter, zCenter)
 			prompt.ObjectText = "Base " .. baseIdx
 			prompt.HoldDuration = 0
 			prompt.MaxActivationDistance = 12
-			prompt.Enabled = false -- Stage 1: belum ada handler; diaktifkan Stage 3
+			prompt.Enabled = false -- belum ada pemilik; diaktifkan refreshPedestalPrompt saat base terisi (Stage 5)
 			prompt:SetAttribute("PromptKind", "Pedestal")
 			prompt:SetAttribute("OwnerUserId", 0)
 			prompt:SetAttribute("SlotFilled", false)
 			prompt:SetAttribute("BaseIdx", baseIdx)
 			prompt:SetAttribute("SlotIdx", slotIdx)
 			prompt.Parent = pedestal
+			PedestalPrompts[baseIdx] = PedestalPrompts[baseIdx] or {}
+			PedestalPrompts[baseIdx][slotIdx] = prompt
 		end
 	end
 
@@ -532,6 +539,44 @@ local function refreshOwnerBoard(baseIdx)
 	end
 end
 
+-- Pemeliharaan atribut prompt pedestal (Stage 5): client membaca
+-- atribut ini untuk label Taruh/Jual/Curi — JANGAN pakai teks
+-- OwnerLabel sebagai sumber kebenaran kepemilikan. Atribut ditulis
+-- HANYA server, di sini: OwnerUserId saat base di-assign/dilepas,
+-- SlotFilled saat slot terisi/dikosongkan, Enabled saat base sudah
+-- bisa dipakai (ada pemilik). Semua validasi tetap di server.
+local function refreshPedestalPrompt(baseIdx, slotIdx)
+	local promptsForBase = PedestalPrompts[baseIdx]
+	if not promptsForBase then
+		return
+	end
+	local prompt = promptsForBase[slotIdx]
+	if not prompt then
+		return
+	end
+	local owner = BaseOwner[baseIdx]
+	if owner then
+		prompt:SetAttribute("OwnerUserId", owner.UserId)
+	else
+		prompt:SetAttribute("OwnerUserId", 0)
+	end
+	local filled = false
+	if owner then
+		local state = Players[owner]
+		if state and state.Slots[slotIdx] ~= nil then
+			filled = true
+		end
+	end
+	prompt:SetAttribute("SlotFilled", filled)
+	prompt.Enabled = owner ~= nil
+end
+
+local function refreshAllPedestalPrompts(baseIdx)
+	for slotIdx = 1, Config.SLOT_COUNT do
+		refreshPedestalPrompt(baseIdx, slotIdx)
+	end
+end
+
 -- Memberi base kosong pertama kepada pemain; nil kalau penuh.
 local function assignBase(player)
 	local state = Players[player]
@@ -543,6 +588,7 @@ local function assignBase(player)
 			BaseOwner[baseIdx] = player
 			state.Base = baseIdx
 			refreshOwnerBoard(baseIdx)
+			refreshAllPedestalPrompts(baseIdx)
 			return baseIdx
 		end
 	end
@@ -573,6 +619,7 @@ local function releaseBase(player)
 	BaseOwner[baseIdx] = nil
 	state.Base = nil
 	refreshOwnerBoard(baseIdx)
+	refreshAllPedestalPrompts(baseIdx)
 end
 
 local function getPlayerState(player)
@@ -830,6 +877,7 @@ local function onPlaceRequest(player, slotIdx)
 	Remotes.Notify:FireClient(player, msg)
 	if ok then
 		refreshSlotVisual(baseIdx, slotIdx)
+		refreshPedestalPrompt(baseIdx, slotIdx)
 		refreshCarriedVisual(player)
 	end
 end
@@ -849,6 +897,7 @@ local function onSellRequest(player, slotIdx)
 	Remotes.Notify:FireClient(player, msg)
 	if ok then
 		refreshSlotVisual(baseIdx, slotIdx)
+		refreshPedestalPrompt(baseIdx, slotIdx)
 	end
 end
 
@@ -869,6 +918,7 @@ local function onRebirthRequest(player)
 			for i = 1, Config.SLOT_COUNT do
 				refreshSlotVisual(baseIdx, i)
 			end
+			refreshAllPedestalPrompts(baseIdx)
 		end
 		refreshCarriedVisual(player)
 	end
@@ -886,6 +936,7 @@ local function onStealRequest(player, baseIdx, slotIdx)
 	local ok, _msg, victim, _item = Steal.trySteal(Players, player, baseIdx, slotIdx, Remotes, World)
 	if ok and victim ~= nil then
 		refreshSlotVisual(baseIdx, slotIdx)
+		refreshPedestalPrompt(baseIdx, slotIdx)
 		refreshCarriedVisual(player)
 	end
 end
@@ -1534,6 +1585,7 @@ local function onPlayerAdded(player)
 				for i = 1, Config.SLOT_COUNT do
 					refreshSlotVisual(current.Base, i)
 				end
+				refreshAllPedestalPrompts(current.Base)
 			end
 			refreshCarriedVisual(player)
 		elseif status == "new" then
