@@ -437,14 +437,27 @@ Config.STEAL_RANGE = 12
 -- wajar; keduanya membaca konstanta ini, jadi prompt dan server
 -- tetap konsisten. STEAL_RANGE (curi, 12) dan TAKE_RANGE (ambil
 -- conveyor, 24) TIDAK berubah.
-Config.CLAIM_RANGE = 20
+-- LAPORAN BOS 05:02 WIB 20 Nov (build fbdfad9): "gabisa klaim box",
+-- "kadang muncul kadang engga" — peti saat Scramble tersebar dan
+-- 20 stud masih terlalu mepet dari tempat berdiri natural, jadi
+-- CLAIM_RANGE 20 -> 28. Prompt "Buka Peti" + validasi server
+-- Flood.claimCrate sama-sama membaca konstanta ini.
+Config.CLAIM_RANGE = 28
 
--- Ambil Brainrot dari conveyor (FIX ROUND 5, 20 Nov): jangkauan ambil
+-- Beli Brainrot dari conveyor (FIX ROUND 5, 20 Nov): jangkauan beli
 -- khusus 24 stud (lebih jauh dari STEAL_RANGE 12) agar kedua jalur
 -- conveyor (x = ±7.5) terjangkau dari kedua sisi conveyor. STEAL_RANGE
 -- (curi dari pedestal) TIDAK berubah; CLAIM_RANGE naik 12 -> 20 di
 -- FIX ROUND 6 (lihat di atas).
-Config.TAKE_RANGE = 24
+-- LAPORAN BOS 05:02 WIB 20 Nov (build fbdfad9): "gabisa beli brain",
+-- "kadang muncul kadang engga" — dari tempat berdiri natural di
+-- samping conveyor (x ≈ ±18–20), Brainrot di jalur JAUH (x = ∓7.5)
+-- berjarak ~25–28 stud > 24, jadi prompt "Beli" tidak muncul;
+-- jalur DEKAT muncul. Brainrot berganti jalur acak -> kadang muncul
+-- kadang engga. TAKE_RANGE 24 -> 32 supaya kedua jalur selalu
+-- terjangkau dari tempat berdiri natural. Prompt "Beli" + validasi
+-- server onTakeRequest sama-sama membaca konstanta ini.
+Config.TAKE_RANGE = 32
 
 -- Dinding pembatas tepi map (FIX ROUND 6, 20 Nov): pemain bisa jalan
 -- sampai ujung terrain dan jatuh. 4 dinding transparan (Transparency 1,

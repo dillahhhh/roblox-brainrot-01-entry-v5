@@ -47,6 +47,16 @@ local function fireMoneyUpdate(remotes, player, state)
 	end
 end
 
+-- Kirim MoneyUpdate untuk satu pemain (dipakai Main saat beli conveyor:
+-- pengurangan uang harus langsung terlihat client, bukan menunggu tick
+-- income 1 detik berikutnya).
+function Economy.sendMoneyUpdate(players, player, remotes)
+	local state = players[player]
+	if state ~= nil then
+		fireMoneyUpdate(remotes, player, state)
+	end
+end
+
 -- Tambah income tiap pemain yang LoadStatus-nya "ok"/"new"; pemain
 -- "loading"/"failed"/"corrupt" dilewati. Kirim MoneyUpdate tiap tick.
 function Economy.addIncome(players, remotes)

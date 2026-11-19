@@ -15,7 +15,8 @@
 -- 1. CarryPanel: server TIDAK mengirim event "carried". Client hanya
 --    tahu ia membawa Brainrot dari aksi/pesan yang ia terima sendiri:
 --    StealResult sukses ("Berhasil mencuri <nama>!"), Notify klaim
---    ("Kamu mendapatkan <nama>!"). Tangan dianggap kosong lagi saat
+--    ("Kamu mendapatkan <nama>!"), Notify beli conveyor ("Kamu membeli
+--    <nama> seharga $<harga>!"). Tangan dianggap kosong lagi saat
 --    Notify place ("... ditaruh di slot ...") atau rebirth berhasil.
 --    Nama dipetakan balik ke Roster lewat DisplayName untuk rarity.
 --    Saat fase Flooding, carried server bisa tersapu tanpa pesan ke
@@ -692,6 +693,13 @@ trackConnection(Remotes.Notify.OnClientEvent:Connect(function(text)
 	local claimedName = string.match(text, "^Kamu mendapatkan (.+)!$")
 	if claimedName ~= nil then
 		noteCarried(claimedName)
+		return
+	end
+	-- Beli conveyor sukses: "Kamu membeli <nama> seharga $<harga>!" ->
+	-- tangan terisi (koreksi bos 05:07 WIB 20 Nov: conveyor itu BELI).
+	local boughtName = string.match(text, "^Kamu membeli (.+) seharga %$%d+!$")
+	if boughtName ~= nil then
+		noteCarried(boughtName)
 		return
 	end
 	-- Taruh sukses: "... ditaruh di slot ..." -> tangan kosong.

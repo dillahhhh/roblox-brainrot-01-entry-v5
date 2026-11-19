@@ -307,7 +307,8 @@ end
 -- 3. Peti belum diklaim (Claimed == false), kalau tidak ->
 --    "peti sudah diklaim".
 -- 4. Tangan kosong (Carried == nil), kalau tidak -> "tangan penuh".
--- 5. HumanoidRootPart <= CLAIM_RANGE (20, FIX ROUND 6 — dulu 12)
+-- 5. HumanoidRootPart <= CLAIM_RANGE (28, laporan bos 05:02 WIB
+--    20 Nov — dulu 20 FIX ROUND 6, dulu 12)
 --    dari posisi peti, kalau tidak / karakter tidak ada ->
 --    "terlalu jauh".
 -- 6. Peti belum kedaluwarsa (now <= ExpiresAt), kalau tidak ->

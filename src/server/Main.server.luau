@@ -13,8 +13,8 @@
 -- (refreshPedestalPrompt: OwnerUserId saat base di-assign/dilepas,
 -- SlotFilled saat slot terisi/dikosongkan, Enabled saat base ada
 -- pemilik) agar client bisa melabel Taruh/Jual/Curi dari atribut.
--- Fix pasca-uji Studio bos (20 Nov): alur ambil Brainrot dari conveyor
--- (ProximityPrompt "Ambil" + TakeRequest + onTakeRequest), rumah base
+-- Fix pasca-uji Studio bos (20 Nov): alur beli Brainrot dari conveyor
+-- (ProximityPrompt "Beli" + TakeRequest + onTakeRequest), rumah base
 -- di buildOneBase, fallback Studio di isLoadReady (DataStore:128 di
 -- file lokal belum publish), pohon di depan pintu base di-skip di
 -- buildTrees, plus polish visual map (jalur pejalan kaki, medali +
@@ -2088,7 +2088,7 @@ createBrainrotModel = function(kind, scale)
 	auraShell.Transparency = Config.BRAINROT_AURA_TRANSPARENCY
 	-- FIX ROUND 10 (20 Nov): aura TIDAK BOLEH ikut raycast.
 	-- Bola aura Neon membungkus seluruh model, jadi sinar
-	-- line-of-sight ProximityPrompt ("Ambil" di conveyor, "Buka
+	-- line-of-sight ProximityPrompt ("Beli" di conveyor, "Buka
 	-- Peti" di peti) menembus aura dulu -> prompt selalu
 	-- tersembunyi sejak aura ditambahkan di round 7. CanQuery =
 	-- false membuat glow visual murni, jalur LOS ke Body bebas.
@@ -2575,21 +2575,24 @@ local function createConveyorModel(item)
 	if not model then
 		return nil
 	end
-	-- Prompt ambil: menempel pada PrimaryPart (Body) model sehingga
+	-- Prompt beli: menempel pada PrimaryPart (Body) model sehingga
 	-- ikut bergeser saat moveConveyorItems memindahkan model dengan
 	-- PivotTo; ikut hancur bersama model saat tersapu flood atau
-	-- mencapai ujung conveyor (destroyConveyorModel).
+	-- mencapai ujung conveyor (destroyConveyorModel). ActionText
+	-- "Beli" + harga di ObjectText (koreksi bos 05:07 WIB 20 Nov:
+	-- conveyor itu BELI, bukan ambil gratis).
 	local rosterEntry = Config.Roster[item.Kind]
+	local price = (rosterEntry and rosterEntry.Price) or 0
 	local prompt = Instance.new("ProximityPrompt")
-	prompt.ActionText = "Ambil"
-	prompt.ObjectText = (rosterEntry and rosterEntry.DisplayName) or item.Kind
+	prompt.ActionText = "Beli"
+	prompt.ObjectText = ((rosterEntry and rosterEntry.DisplayName) or item.Kind) .. " — $" .. tostring(price)
 	prompt.HoldDuration = 0
-	prompt.MaxActivationDistance = Config.TAKE_RANGE -- FIX ROUND 5: 24 stud, kedua jalur terjangkau dari kedua sisi
+	prompt.MaxActivationDistance = Config.TAKE_RANGE -- 32 stud, kedua jalur terjangkau dari tempat berdiri natural (laporan bos 05:02 WIB 20 Nov)
 	-- FIX ROUND 10 (20 Nov): RequiresLineOfSight = false. Prompt
 	-- menempel di Body modelnya sendiri, tapi sinar LOS dari
 	-- kamera menembus bola AuraShell (Neon, membungkus model)
 	-- karena Roblox hanya mengecualikan part INDUK prompt dari
-	-- cek LOS, bukan bagian lain model yang sama — prompt "Ambil"
+	-- cek LOS, bukan bagian lain model yang sama — prompt "Beli"
 	-- tidak pernah muncul sejak aura ditambahkan di round 7.
 	prompt.RequiresLineOfSight = false
 	prompt:SetAttribute("PromptKind", "Conveyor")
@@ -2688,7 +2691,7 @@ local function createCrateModel(crate)
 	-- kotak peti dibesarkan 3x2x3 -> 4x2.5x4 dan label diangkat,
 	-- supaya peti mudah dilihat + prompt "Buka Peti" mudah ketemu
 	-- dari jarak wajar. Jangkauan klaimnya sendiri naik via
-	-- Config.CLAIM_RANGE 12 -> 20 (prompt di bawah + validasi
+	-- Config.CLAIM_RANGE 12 -> 20 -> 28 (prompt di bawah + validasi
 	-- server Flood.claimCrate sama-sama membaca konstanta itu).
 	-- Aturan spawn peti (>= 3 per siklus), isi/hadiah, timing
 	-- flood, dan validasi klaim lain TIDAK berubah.
@@ -2756,7 +2759,7 @@ local function createCrateModel(crate)
 	-- FIX ROUND 10 (20 Nov): RequiresLineOfSight = false.
 	-- Model Brainrot + bola AuraShell duduk DI ATAS box peti,
 	-- sinar LOS ke box menembus aura -> prompt "Buka Peti" ikut
-	-- tersembunyi sejak round 7. Alasan sama dengan prompt "Ambil".
+	-- tersembunyi sejak round 7. Alasan sama dengan prompt "Beli".
 	prompt.RequiresLineOfSight = false
 	prompt:SetAttribute("CrateId", crate.Id)
 	prompt.Parent = box
@@ -3065,18 +3068,26 @@ local function onClaimRequest(player, crateId)
 	end
 end
 
--- Handler TakeRequest (ambil Brainrot dari conveyor): validasi
+-- Handler TakeRequest (BELI Brainrot dari conveyor — koreksi bos
+-- 05:07 WIB 20 Nov: conveyor itu BELI, bukan ambil gratis): validasi
 -- berurutan — (a) load siap (termasuk fallback Studio di isLoadReady),
 -- (b) tangan kosong, (c) UID cocok dengan entri di ConveyorItems,
 -- (d) jarak HumanoidRootPart ke posisi entri ConveyorItems saat itu
--- <= Config.TAKE_RANGE (24 stud, FIX ROUND 5 — dulu 12 via
--- STEAL_RANGE, jalur jauh tidak terjangkau dari tepi seberang).
--- Bila semua lolos, DALAM SATU LANGKAH tanpa yield: hapus entri dari
--- ConveyorItems, hancurkan model conveyor, isi Carried, pasang visual
--- carried, Notify sukses. Pesan sukses memakai
--- format "Kamu mendapatkan <nama>!" yang sama dengan klaim peti,
--- sehingga CarryPanel client ter-update lewat listener Notify yang
--- sudah ada (tanpa event baru).
+-- <= Config.TAKE_RANGE (32 stud, laporan bos 05:02 WIB 20 Nov — dulu
+-- 24 FIX ROUND 5, dulu 12 via STEAL_RANGE, jalur jauh tidak
+-- terjangkau dari tepi seberang), (e) UANG CUKUP: state.Money >=
+-- harga kind (Config.Roster[kind].Price); kalau kurang, tolak dengan
+-- Notify "Uang tidak cukup — ..." tanpa memberi Brainrot dan tanpa
+-- mengurangi uang.
+-- Bila semua lolos, DALAM SATU LANGKAH tanpa yield: kurangi
+-- state.Money sebesar harga, hapus entri dari ConveyorItems,
+-- hancurkan model conveyor, isi Carried, pasang visual carried,
+-- kirim MoneyUpdate (uang baru langsung terlihat, bukan menunggu
+-- tick income), Notify sukses "Kamu membeli <nama> seharga $<harga>!".
+-- Pesan sukses TIDAK lagi memakai format "Kamu mendapatkan <nama>!"
+-- (itu sekarang khusus klaim peti) — listener Notify client dipasangi
+-- pola baru untuk pesan beli supaya CarryPanel tetap ter-update
+-- (lihat Main.client.luau, listener Notify).
 local function onTakeRequest(player, uid)
 	if not isLoadReady(player) then
 		notifyLoadNotReady(player)
@@ -3114,15 +3125,26 @@ local function onTakeRequest(player, uid)
 		Remotes.Notify:FireClient(player, "Terlalu jauh dari conveyor.")
 		return
 	end
-	-- Sukses: satu langkah sinkron, tanpa yield di tengah.
+	local rosterEntry = Config.Roster[item.Kind]
+	if rosterEntry == nil then
+		Remotes.Notify:FireClient(player, "Brainrot tidak dikenal.")
+		return
+	end
+	local price = rosterEntry.Price
+	if state.Money < price then
+		Remotes.Notify:FireClient(player, "Uang tidak cukup — " .. rosterEntry.DisplayName .. " harganya $" .. tostring(price) .. ".")
+		return
+	end
+	-- Sukses (BELI): satu langkah sinkron, tanpa yield di tengah —
+	-- kurangi uang DALAM langkah yang sama dengan pemberian Brainrot.
+	state.Money = state.Money - price
 	table.remove(ConveyorItems, foundIdx)
 	destroyConveyorModel(item.Uid)
 	state.Carried = { Uid = item.Uid, Kind = item.Kind }
 	refreshCarriedVisual(player)
-	markCollected(player, item.Kind) -- FITUR INDEX: ambil conveyor = dapat
-	local rosterEntry = Config.Roster[item.Kind]
-	local displayName = (rosterEntry and rosterEntry.DisplayName) or item.Kind
-	Remotes.Notify:FireClient(player, "Kamu mendapatkan " .. displayName .. "!")
+	markCollected(player, item.Kind) -- FITUR INDEX: beli conveyor = dapat
+	Economy.sendMoneyUpdate(Players, player, Remotes)
+	Remotes.Notify:FireClient(player, "Kamu membeli " .. rosterEntry.DisplayName .. " seharga $" .. tostring(price) .. "!")
 end
 
 -- ---------------------------------------------------------------------------
