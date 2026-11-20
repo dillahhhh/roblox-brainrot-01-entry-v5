@@ -8,6 +8,8 @@
 -- Fix pasca-uji Studio bos (20 Nov, round 2): tombol "Jual yang
 -- dibawa" (SellCarriedRequest, hanya saat membawa) + lari Shift
 -- (WalkSpeed 28 tahan / 16 lepas, client-side, tanpa stamina).
+-- FIX ROUND 24 (20 Nov, bos: "kalo di hp gabisa lari"): tombol HUD
+-- "LARI" khusus sentuh (tahan = lari, sama seperti Shift).
 -- Fitur 20 Nov: tombol HUD "Nama" ON/OFF — sembunyikan label
 -- Brainrot + nametag pemain (client-only, tanpa server).
 -- Client TIDAK PERNAH mengubah uang/state — hanya menampilkan dan
@@ -1048,14 +1050,17 @@ trackConnection(indexClose.MouseButton1Click:Connect(function()
 end))
 
 -- ---------------------------------------------------------------------------
--- Lari (Shift): client-side saja, server tidak disentuh (tidak ada
--- validasi WalkSpeed di server). Shift kiri/kanan TAHAN = lari
--- WalkSpeed 28, lepas = kembali 16. Tanpa stamina. Kecepatan
--- diterapkan ulang saat karakter (re)spawn; status Shift yang sedang
--- ditahan diingat supaya respawn di tengah lari tetap lari.
+-- Lari: client-side saja, server tidak disentuh (tidak ada
+-- validasi WalkSpeed di server). TAHAN = lari WalkSpeed 28, lepas =
+-- kembali 16. Tanpa stamina. Dua sumber input, SATU fungsi penentu
+-- kecepatan (applyWalkSpeed): Shift kiri/kanan (PC) dan tombol HUD
+-- "LARI" (sentuh, FIX ROUND 24 — di HP tidak ada Shift). Kecepatan
+-- diterapkan ulang saat karakter (re)spawn; status tahan diingat
+-- supaya respawn di tengah lari tetap lari.
 -- ---------------------------------------------------------------------------
 
-local sprinting = false -- true selama Shift kiri/kanan sedang ditahan
+local shiftSprinting = false -- true selama Shift kiri/kanan ditahan (PC)
+local touchSprinting = false -- true selama tombol LARI ditahan (sentuh)
 
 local function applyWalkSpeed()
 	local character = LocalPlayer.Character
@@ -1066,7 +1071,7 @@ local function applyWalkSpeed()
 	if humanoid == nil then
 		return
 	end
-	if sprinting then
+	if shiftSprinting or touchSprinting then
 		humanoid.WalkSpeed = 28
 	else
 		humanoid.WalkSpeed = 16
@@ -1078,7 +1083,7 @@ trackConnection(UserInputService.InputBegan:Connect(function(input, gameProcesse
 		return
 	end
 	if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
-		sprinting = true
+		shiftSprinting = true
 		applyWalkSpeed()
 	end
 	-- FIX ROUND 16: tombol F = Pukul (sama seperti tombol HUD "Pukul").
@@ -1090,10 +1095,52 @@ end))
 
 trackConnection(UserInputService.InputEnded:Connect(function(input, _gameProcessed)
 	if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
-		sprinting = false
+		shiftSprinting = false
 		applyWalkSpeed()
 	end
 end))
+
+-- FIX ROUND 24 (20 Nov, bos: "kalo di hp gabisa lari"): tombol LARI
+-- khusus perangkat sentuh. Sprint tadinya hanya Shift — di HP tidak
+-- ada keyboard, jadi pemain HP tidak bisa lari sama sekali. Tombol
+-- ini HANYA dibuat bila TouchEnabled (di PC tidak muncul, Shift
+-- tetap caranya). TAHAN tombol = lari, lepas = kembali jalan —
+-- pakai flag touchSprinting + applyWalkSpeed() yang sama seperti
+-- Shift, jadi kecepatan tetap 28/16 dari satu tempat.
+-- Posisi: kiri bawah, DI ATAS area joystick sentuh bawaan Roblox
+-- (tombol 140x140 di (0,16,1,-330), anchor kiri-bawah) — tidak
+-- menutupi MoneyPanel/CarryPanel (tengah bawah), tombol aksi kanan
+-- (Lock/Rebirth/Indeks/Pukul), maupun tombol lompat bawaan di
+-- kanan bawah. Ukuran 140 (render ~77-108 px lewat UIScale)
+-- cukup besar untuk jempol. Warna hijau lebih terang saat ditahan
+-- supaya pemain tahu larinya aktif.
+-- Petunjuk "Shift = Lari" diganti di HP (tidak berlaku), dan label
+-- tombol Pukul dibersihkan dari "(F)" di HP.
+if UserInputService.TouchEnabled then
+	sprintHint.Text = "Tahan LARI untuk lari"
+	slapButton.Text = "Pukul"
+	local sprintButton = makeButton(screenGui, "SprintButton",
+		UDim2.fromOffset(140, 140), UDim2.new(0, 16, 1, -330),
+		"LARI", Color3.fromRGB(40, 130, 70))
+	sprintButton.AnchorPoint = Vector2.new(0, 1)
+	sprintButton.TextSize = 26
+	trackConnection(sprintButton.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch
+			or input.UserInputType == Enum.UserInputType.MouseButton1 then
+			touchSprinting = true
+			applyWalkSpeed()
+			sprintButton.BackgroundColor3 = Color3.fromRGB(60, 180, 90)
+		end
+	end))
+	trackConnection(sprintButton.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch
+			or input.UserInputType == Enum.UserInputType.MouseButton1 then
+			touchSprinting = false
+			applyWalkSpeed()
+			sprintButton.BackgroundColor3 = Color3.fromRGB(40, 130, 70)
+		end
+	end))
+end
 
 trackConnection(LocalPlayer.CharacterAdded:Connect(function(_character)
 	-- Humanoid mungkin belum ada saat event fire; tunggu sebentar.
