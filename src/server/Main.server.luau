@@ -1445,15 +1445,23 @@ local function buildExhibitionTable()
 	-- hadap Brainrot yang baru, bukan lagi sisi barat/spawn),
 	-- menghadap base (Face Right setelah yaw pelat), TIDAK rebah
 	-- dan TIDAK miring.
-	-- Pelat RENDAH (tinggi 1.0, atas y = 4.0) di tepi depan
+	-- Pelat RENDAH (tinggi 1.6, atas y = 4.6) di tepi depan
 	-- piringan (2.6 stud dari pusat model, tepat di luar piringan
 	-- diameter 5): dari arah base, pelat hanya menutupi kaki/
 	-- bawah badan paling bawah dari jauh; badan, kepala, muka,
 	-- dan ciri khas Brainrot tetap terlihat utuh. Makin dekat
-	-- pemain ke meja, makin sedikit yang tertutup. Pelat 4 lebar
-	-- (melintang hadap) x 1.0 tinggi, TextSize 28 — "Ultra Rare"/
+	-- pemain ke meja, makin sedikit yang tertutup. Pelat 6 lebar
+	-- (melintang hadap) x 1.6 tinggi, TextSize 48 — "Ultra Rare"/
 	-- "Legendary" muat satu baris. Antar-pelat ~7 stud (pusat
-	-- berjarak 7) — tidak bertabrakan.
+	-- berjarak 7) — pelat 6 lebar menyisakan celah 1 stud,
+	-- tidak bertabrakan.
+	-- FIX ROUND 20 (20 Nov, perintah bos: "tulisan raritynya
+	-- kecil bngttt gedein"): teks digedein ~2x — TextSize 28 ->
+	-- 48 (tinggi teks 0.56 -> 0.96 stud), pelat 4x1.0 -> 6x1.6.
+	-- Posisi + yaw pelat TIDAK berubah; atas pelat naik 4.0 ->
+	-- 4.6 tapi cek garis pandang dari arah base tetap lolos
+	-- (badan y=5.0 dan muka y=7.3 terlihat, hanya kaki yang
+	-- mungkin tertutup dari jauh — sama seperti sebelumnya).
 	for i, kind in ipairs(kinds) do
 		local entry = Config.Roster[kind]
 		-- (Tanpa `continue`: file ini harus lolos `luac -p` Lua 5.1.)
@@ -1471,11 +1479,15 @@ local function buildExhibitionTable()
 			-- (arah hadap Brainrot yang baru). Arah ke base per
 			-- model: dir = normalisasi (faceTarget - model).
 			-- Pelat di tepi depan piringan (jarak discDiameter/2
-			-- + 0.1 dari pusat model), RENDAH (tinggi 1.0, atas
-			-- y = 4.0) supaya tidak menutupi Brainrot dari arah
+			-- + 0.1 dari pusat model), RENDAH (tinggi 1.6, atas
+			-- y = 4.6) supaya tidak menutupi Brainrot dari arah
 			-- base. Yaw pelat = yaw model - 90°: sumbu tipis
-			-- (0.15) searah hadap, sumbu lebar (4) melintang;
+			-- (0.15) searah hadap, sumbu lebar (6) melintang;
 			-- Face Right (+X lokal) menunjuk ke base.
+			-- FIX ROUND 20: TextSize 48, pelat 6x1.6 (dulu 4x1.0,
+			-- TextSize 28) — teks ~2x lebih besar, tetap muat
+			-- satu baris ("Ultra Rare" terpanjang, ~228 px dari
+			-- 300 px lebar pelat).
 			local pdx = faceTargetX - modelX
 			local pdz = faceTargetZ - modelZ
 			local plen = math.sqrt(pdx * pdx + pdz * pdz)
@@ -1485,12 +1497,12 @@ local function buildExhibitionTable()
 			local modelYaw = math.atan2(pdx, pdz)
 			local labelPlate = makePart(
 				"ExhibitionTierLabel",
-				Vector3.new(0.15, 1.0, 4),
-				Vector3.new(plateX, surfaceY + 0.5, plateZ),
+				Vector3.new(0.15, 1.6, 6),
+				Vector3.new(plateX, surfaceY + 0.8, plateZ),
 				Enum.Material.SmoothPlastic,
 				Color3.fromRGB(30, 30, 35)
 			)
-			labelPlate.CFrame = CFrame.new(plateX, surfaceY + 0.5, plateZ)
+			labelPlate.CFrame = CFrame.new(plateX, surfaceY + 0.8, plateZ)
 				* CFrame.Angles(0, modelYaw - math.rad(90), 0)
 			labelPlate.CanCollide = false
 			local labelGui = Instance.new("SurfaceGui")
@@ -1506,7 +1518,7 @@ local function buildExhibitionTable()
 			labelText.Text = entry.Rarity
 			labelText.TextColor3 = entry.Color
 			labelText.TextScaled = false
-			labelText.TextSize = 28
+			labelText.TextSize = 48
 			labelText.TextWrapped = true
 			labelText.Font = Enum.Font.GothamBold
 			labelText.Parent = labelGui
