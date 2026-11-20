@@ -114,6 +114,7 @@ local REMOTE_NAMES = {
 	"SellCarriedRequest",
 	"SlapRequest", -- FIX ROUND 16: mukul (slap) — penyerang kirim, server cari korban
 	"PickupRequest", -- FIX ROUND 16: ambil Brainrot jatuh dari tanah
+	"Knockback", -- FIX ROUND 23: server -> client KORBAN; korban yang menerapkan lemparan ke karakternya sendiri (network ownership)
 	"DebugFlood",
 }
 
@@ -3397,8 +3398,14 @@ end
 -- penyerang. Korban = pemain LAIN yang terdekat dalam
 -- Config.SLAP_RANGE (6 stud), karakter ada + hidup (Health > 0).
 -- Bila tidak ada korban -> Notify "Tidak ada pemain di dekatmu."
--- Knockback: AssemblyLinearVelocity korban menjauhi penyerang
--- (horizontal x30 + ke atas 12). Bila korban membawa Brainrot:
+-- Knockback (FIX ROUND 23): DITERAPKAN DI CLIENT KORBAN lewat remote
+-- Knockback (arah horizontal menjauhi penyerang + ke atas 12).
+-- Dulu server langsung meng-set AssemblyLinearVelocity korban — itu
+-- TIDAK PERNAH bekerja: karakter pemain dimiliki (network ownership)
+-- oleh client korban, dan simulasi client + Humanoid-nya (state
+-- Running) langsung meng-override velocity server, jadi korban tidak
+-- terlempar sama sekali padahal Notify "Kamu memukul ...!" tetap
+-- terkirim. Bila korban membawa Brainrot:
 -- Carried dikosongkan (visual carried dihancurkan), lalu jadi
 -- DroppedItems di posisi korban (tanah, y = 0) dengan
 -- ExpiresAt = now + 60 detik; korban dapat Notify jatuh.
@@ -3452,7 +3459,11 @@ local function onSlapRequest(player)
 		dir = Vector3.new(0, 0, 1)
 	end
 	dir = dir.Unit
-	victimHrp.AssemblyLinearVelocity = dir * 30 + Vector3.new(0, 12, 0)
+	-- FIX ROUND 23: kirim arah lemparan ke client korban (remote
+	-- Knockback); client korban yang mengatur velocity
+	-- HumanoidRootPart-nya sendiri + HumanoidState Physics sebentar
+	-- supaya tidak langsung di-override controller-nya.
+	Remotes.Knockback:FireClient(victim, dir.X, dir.Z)
 	local vState = Players[victim]
 	if vState ~= nil and vState.Carried ~= nil then
 		local droppedKind = vState.Carried.Kind
@@ -3614,6 +3625,21 @@ local function onPlayerAdded(player)
 				refreshAllPedestalPrompts(current.Base)
 			end
 			refreshCarriedVisual(player)
+			-- FIX ROUND 23 (BUG A): Carried yang dipulihkan dari save
+			-- HARUS diberitahukan ke client. Client melacak carried
+			-- SECARA LOKAL dari pola teks Notify, dan tanpa Notify ini
+			-- client mengira tangan kosong padahal server + model di
+			-- kepala mengira dia membawa: Brainrot nempel di kepala
+			-- tapi tidak bisa ditaruh (prompt "Tangan kosong") dan
+			-- tidak bisa dijual (tombol "Jual yang dibawa" tersembunyi).
+			-- Pakai format "Kamu mendapatkan <nama>!" yang sudah
+			-- dikenali listener Notify client (noteCarried).
+			if current.Carried ~= nil then
+				local carriedEntry = Config.Roster[current.Carried.Kind]
+				if carriedEntry ~= nil then
+					Remotes.Notify:FireClient(player, "Kamu mendapatkan " .. carriedEntry.DisplayName .. "!")
+				end
+			end
 		elseif status == "new" then
 			current.LoadStatus = "new"
 		else

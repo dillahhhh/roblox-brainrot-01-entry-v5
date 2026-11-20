@@ -18,7 +18,10 @@
 --    tahu ia membawa Brainrot dari aksi/pesan yang ia terima sendiri:
 --    StealResult sukses ("Berhasil mencuri <nama>!"), Notify klaim
 --    ("Kamu mendapatkan <nama>!"), Notify beli conveyor ("Kamu membeli
---    <nama> seharga $<harga>!"). Tangan dianggap kosong lagi saat
+--    <nama> seharga $<harga>!"), Notify load (Carried dipulihkan dari
+--    save saat rejoin -> "Kamu mendapatkan <nama>!" — FIX ROUND 23,
+--    supaya Brainrot bawaan tidak nempel di kepala tanpa bisa
+--    ditaruh/dijual). Tangan dianggap kosong lagi saat
 --    Notify place ("... ditaruh di slot ...") atau rebirth berhasil.
 --    Nama dipetakan balik ke Roster lewat DisplayName untuk rarity.
 --    Saat fase Flooding, carried server bisa tersapu tanpa pesan ke
@@ -142,6 +145,7 @@ local Remotes = {
 	SellCarriedRequest = waitRemote("SellCarriedRequest"),
 	SlapRequest = waitRemote("SlapRequest"), -- FIX ROUND 16: mukul
 	PickupRequest = waitRemote("PickupRequest"), -- FIX ROUND 16: ambil Brainrot jatuh
+	Knockback = waitRemote("Knockback"), -- FIX ROUND 23: server kirim arah lemparan saat kita dipukul
 	DebugFlood = waitRemote("DebugFlood"),
 }
 
@@ -881,6 +885,36 @@ trackConnection(Remotes.Notify.OnClientEvent:Connect(function(text)
 		locked = false
 		updateLockButton()
 	end
+end))
+
+-- FIX ROUND 23 (BUG B): knockback diterapkan DI CLIENT KORBAN.
+-- Karakter pemain dimiliki client-nya sendiri (network ownership);
+-- velocity yang di-set server di-override simulasi client + Humanoid
+-- (state Running) sehingga korban tidak terlempar sama sekali.
+-- Server hanya memutuskan ARAH (validasi jarak/cooldown di server);
+-- client korban yang mengatur velocity HumanoidRootPart-nya sendiri.
+-- Humanoid dipindah sebentar ke state Physics supaya controller-nya
+-- tidak langsung melawan lemparan, lalu kembali GettingUp setelah
+-- 0,5 detik.
+trackConnection(Remotes.Knockback.OnClientEvent:Connect(function(dirX, dirZ)
+	local character = LocalPlayer.Character
+	local hrp = character and character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if hrp == nil or humanoid == nil or humanoid.Health <= 0 then
+		return
+	end
+	local dir = Vector3.new(tonumber(dirX) or 0, 0, tonumber(dirZ) or 0)
+	if dir.Magnitude < 0.01 then
+		dir = Vector3.new(0, 0, 1)
+	end
+	dir = dir.Unit
+	humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+	hrp.AssemblyLinearVelocity = dir * 30 + Vector3.new(0, 12, 0)
+	task.delay(0.5, function()
+		if humanoid.Parent ~= nil and humanoid.Health > 0 then
+			humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+		end
+	end)
 end))
 
 -- ---------------------------------------------------------------------------
