@@ -1363,8 +1363,8 @@ local function buildExhibitionTable()
 	-- (z = centerZ), kolom 7 stud (x = centerX - 21 .. centerX + 21).
 	-- Tiap model berdiri di atas PIRINGAN warna rarity-nya sendiri,
 	-- dan tiap model punya LABEL NAMA TIER sendiri TEGAK di depan
-	-- (sisi barat, menghadap spawn — FIX ROUND 17). Model
-	-- menghadap spawn dengan yaw per model (bukan -90 tetap).
+	-- (sisi base, menghadap base — FIX ROUND 18). Model
+	-- menghadap base terdekat dengan yaw per model (bukan -90 tetap).
 	-- Tanpa prompt, tanpa remote. 28 jenis baru TIDAK dipajang
 	-- (Index tetap 35).
 	local surfaceY = topY + topSize.Y / 2
@@ -1372,6 +1372,25 @@ local function buildExhibitionTable()
 	local kinds = Config.EXHIBITION_KINDS
 	local discDiameter = Config.EXHIBITION_DISC_DIAMETER
 	local discHeight = Config.EXHIBITION_DISC_HEIGHT
+	-- FIX ROUND 18: cari BASE TERDEKAT dari pusat meja (32, 162)
+	-- di antara 8 base (BASE_X = ±68, BASE_Z = 90/25/-40/-105).
+	-- Hasil: (68, 90), jarak ~80,5 stud — base lain semuanya
+	-- ≥123 stud. Brainrot pameran menghadap ke base ini.
+	local faceTargetX, faceTargetZ
+	do
+		local bestDistSq = math.huge
+		for _, bx in ipairs(Config.BASE_X) do
+			for _, bz in ipairs(Config.BASE_Z) do
+				local dx = bx - centerX
+				local dz = bz - centerZ
+				local distSq = dx * dx + dz * dz
+				if distSq < bestDistSq then
+					bestDistSq = distSq
+					faceTargetX, faceTargetZ = bx, bz
+				end
+			end
+		end
+	end
 	for i, kind in ipairs(kinds) do
 		local entry = Config.Roster[kind]
 		-- (Tanpa `continue`: file ini harus lolos `luac -p` Lua 5.1.)
@@ -1394,14 +1413,14 @@ local function buildExhibitionTable()
 			if model then
 				model.Name = "ExhibitionBrainrot_" .. kind
 				model.Parent = Workspace
-				-- FIX ROUND 17 (20 Nov, perintah bos: "brain nya
-				-- ngadep tempat spawn"): yaw dihitung PER MODEL ke
-				-- titik spawn persis (Config.SPAWN_POS = 0, 168),
-				-- bukan -90 tetap untuk semua. Mata (+Z lokal
-				-- model) menghadap tepat ke spawn: yaw =
-				-- atan2(dx, dz) dari model ke spawn.
-				local spawnPos = Config.SPAWN_POS
-				local yaw = math.atan2(spawnPos.X - modelX, spawnPos.Z - modelZ)
+				-- FIX ROUND 18 (20 Nov, perintah bos: "menghadap
+				-- ke base aja brainya"): yaw dihitung PER MODEL ke
+				-- titik tengah BASE TERDEKAT dari meja (dihitung
+				-- di atas; (68, 90), ~80,5 stud dari pusat meja),
+				-- bukan lagi ke SPAWN_POS. Mata (+Z lokal model)
+				-- menghadap tepat ke base itu: yaw = atan2(dx, dz)
+				-- dari model ke base.
+				local yaw = math.atan2(faceTargetX - modelX, faceTargetZ - modelZ)
 				model:PivotTo(CFrame.new(modelX, surfaceY + discHeight, modelZ)
 					* CFrame.Angles(0, yaw, 0))
 				-- FIX ROUND 17: label nama dipaksa ke SATU
@@ -1420,39 +1439,55 @@ local function buildExhibitionTable()
 			end
 		end
 	end
-	-- Label nama tier PER MODEL (FIX ROUND 17, perintah bos:
-	-- "raritynya jangan miring harus pas depan brain sesuai rank"
-	-- + "awas aja nutupin brainya"): pelat TEGAK (upright) tepat
-	-- di DEPAN tiap Brainrot — sisi BARAT piringan (arah spawn),
-	-- menghadap spawn (Face Left), TIDAK rebah dan TIDAK miring.
-	-- Round 16 menaruh pelat REBAH (Face Top) di sisi SELATAN
-	-- tiap piringan — dari spawn pelat itu terlihat miring/
-	-- foreshortened, dan bukan di depan Brainrot.
+	-- Label nama tier PER MODEL (FIX ROUND 18, perintah bos:
+	-- "menghadap ke base aja brainya"): pelat TEGAK (upright)
+	-- tepat di DEPAN tiap Brainrot — sisi BASE piringan (arah
+	-- hadap Brainrot yang baru, bukan lagi sisi barat/spawn),
+	-- menghadap base (Face Right setelah yaw pelat), TIDAK rebah
+	-- dan TIDAK miring.
 	-- Pelat RENDAH (tinggi 1.0, atas y = 4.0) di tepi depan
-	-- piringan (pusat x = modelX - 2.6, tepat di luar piringan
-	-- diameter 5): dari kamera spawn, pelat hanya menutupi kaki/
+	-- piringan (2.6 stud dari pusat model, tepat di luar piringan
+	-- diameter 5): dari arah base, pelat hanya menutupi kaki/
 	-- bawah badan paling bawah dari jauh; badan, kepala, muka,
 	-- dan ciri khas Brainrot tetap terlihat utuh. Makin dekat
 	-- pemain ke meja, makin sedikit yang tertutup. Pelat 4 lebar
-	-- (sumbu Z) x 1.0 tinggi, TextSize 28 — "Ultra Rare"/
-	-- "Legendary" muat satu baris. Antar-pelat 7 stud (pusat
+	-- (melintang hadap) x 1.0 tinggi, TextSize 28 — "Ultra Rare"/
+	-- "Legendary" muat satu baris. Antar-pelat ~7 stud (pusat
 	-- berjarak 7) — tidak bertabrakan.
 	for i, kind in ipairs(kinds) do
 		local entry = Config.Roster[kind]
 		-- (Tanpa `continue`: file ini harus lolos `luac -p` Lua 5.1.)
 		if entry ~= nil then
 			local modelX = centerX + (i - (#kinds + 1) / 2) * spacingX
+			-- FIX ROUND 18: pelat pindah ke sisi BASE tiap piringan
+			-- (arah hadap Brainrot yang baru). Arah ke base per
+			-- model: dir = normalisasi (faceTarget - model).
+			-- Pelat di tepi depan piringan (jarak discDiameter/2
+			-- + 0.1 dari pusat model), RENDAH (tinggi 1.0, atas
+			-- y = 4.0) supaya tidak menutupi Brainrot dari arah
+			-- base. Yaw pelat = yaw model - 90°: sumbu tipis
+			-- (0.15) searah hadap, sumbu lebar (4) melintang;
+			-- Face Right (+X lokal) menunjuk ke base.
+			local pdx = faceTargetX - modelX
+			local pdz = faceTargetZ - modelZ
+			local plen = math.sqrt(pdx * pdx + pdz * pdz)
+			local pdirX, pdirZ = pdx / plen, pdz / plen
+			local plateX = modelX + pdirX * (discDiameter / 2 + 0.1)
+			local plateZ = modelZ + pdirZ * (discDiameter / 2 + 0.1)
+			local modelYaw = math.atan2(pdx, pdz)
 			local labelPlate = makePart(
 				"ExhibitionTierLabel",
 				Vector3.new(0.15, 1.0, 4),
-				Vector3.new(modelX - (discDiameter / 2 + 0.1), surfaceY + 0.5, modelZ),
+				Vector3.new(plateX, surfaceY + 0.5, plateZ),
 				Enum.Material.SmoothPlastic,
 				Color3.fromRGB(30, 30, 35)
 			)
+			labelPlate.CFrame = CFrame.new(plateX, surfaceY + 0.5, plateZ)
+				* CFrame.Angles(0, modelYaw - math.rad(90), 0)
 			labelPlate.CanCollide = false
 			local labelGui = Instance.new("SurfaceGui")
 			labelGui.Name = "ExhibitionTierLabelGui"
-			labelGui.Face = Enum.NormalId.Left
+			labelGui.Face = Enum.NormalId.Right
 			labelGui.PixelsPerStud = 50
 			labelGui.LightInfluence = 0
 			labelGui.Parent = labelPlate
