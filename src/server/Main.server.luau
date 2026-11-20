@@ -1459,6 +1459,14 @@ local function buildExhibitionTable()
 		-- (Tanpa `continue`: file ini harus lolos `luac -p` Lua 5.1.)
 		if entry ~= nil then
 			local modelX = centerX + (i - (#kinds + 1) / 2) * spacingX
+			-- FIX ROUND 19: modelZ HARUS didefinisikan di loop ini.
+			-- `local modelZ` di loop pertama (di atas) TIDAK terlihat
+			-- di sini — tanpa baris ini modelZ adalah global nil dan
+			-- `faceTargetZ - modelZ` melempar "attempt to perform
+			-- arithmetic on a nil value" di iterasi pertama, mematikan
+			-- buildExhibitionTable -> buildWorld -> seluruh Main saat
+			-- startup (conveyor tidak pernah spawn Brainrot).
+			local modelZ = centerZ
 			-- FIX ROUND 18: pelat pindah ke sisi BASE tiap piringan
 			-- (arah hadap Brainrot yang baru). Arah ke base per
 			-- model: dir = normalisasi (faceTarget - model).
