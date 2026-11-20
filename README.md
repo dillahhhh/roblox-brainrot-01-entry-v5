@@ -22,8 +22,9 @@ sweeps the map and drops claimable crates.
   roster (7 rarities), economy, flood, steal, and DataStore constants.
 - `PLAY.json` names the published Public place
   (place 112415374628095, universe 10777368274).
-- `screenshots/` currently holds the kit starter's placeholder captures;
-  they will be replaced with real Studio captures of this game before submit.
+- `screenshots/` holds real live captures of this game: the cover
+  (1-start.jpg, retaken 20 Nov from a live play session at a high plaza
+  angle) and the other three from commit 4c5fe7d (in-base, flood, Index).
 - One of the screenshots must also be the game's first thumbnail on Roblox:
   the same picture, uploaded on the Creator Dashboard with the game's icon.
 
