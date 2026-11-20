@@ -1391,6 +1391,9 @@ local function buildExhibitionTable()
 			end
 		end
 	end
+	-- FIX ROUND 21: simpan piringan tiap model supaya loop kedua
+	-- bisa menempelkan label tier mengambang ke piringan itu.
+	local discs = {}
 	for i, kind in ipairs(kinds) do
 		local entry = Config.Roster[kind]
 		-- (Tanpa `continue`: file ini harus lolos `luac -p` Lua 5.1.)
@@ -1409,6 +1412,7 @@ local function buildExhibitionTable()
 			disc.Anchored = true
 			disc.CanCollide = false
 			disc.Parent = Workspace
+			discs[kind] = disc
 			local model = createBrainrotModel(kind, Config.EXHIBITION_MODEL_SCALE)
 			if model then
 				model.Name = "ExhibitionBrainrot_" .. kind
@@ -1439,29 +1443,11 @@ local function buildExhibitionTable()
 			end
 		end
 	end
-	-- Label nama tier PER MODEL (FIX ROUND 18, perintah bos:
-	-- "menghadap ke base aja brainya"): pelat TEGAK (upright)
-	-- tepat di DEPAN tiap Brainrot — sisi BASE piringan (arah
-	-- hadap Brainrot yang baru, bukan lagi sisi barat/spawn),
-	-- menghadap base (Face Right setelah yaw pelat), TIDAK rebah
-	-- dan TIDAK miring.
-	-- Pelat RENDAH (tinggi 1.6, atas y = 4.6) di tepi depan
-	-- piringan (2.6 stud dari pusat model, tepat di luar piringan
-	-- diameter 5): dari arah base, pelat hanya menutupi kaki/
-	-- bawah badan paling bawah dari jauh; badan, kepala, muka,
-	-- dan ciri khas Brainrot tetap terlihat utuh. Makin dekat
-	-- pemain ke meja, makin sedikit yang tertutup. Pelat 6 lebar
-	-- (melintang hadap) x 1.6 tinggi, TextSize 48 — "Ultra Rare"/
-	-- "Legendary" muat satu baris. Antar-pelat ~7 stud (pusat
-	-- berjarak 7) — pelat 6 lebar menyisakan celah 1 stud,
-	-- tidak bertabrakan.
-	-- FIX ROUND 20 (20 Nov, perintah bos: "tulisan raritynya
-	-- kecil bngttt gedein"): teks digedein ~2x — TextSize 28 ->
-	-- 48 (tinggi teks 0.56 -> 0.96 stud), pelat 4x1.0 -> 6x1.6.
-	-- Posisi + yaw pelat TIDAK berubah; atas pelat naik 4.0 ->
-	-- 4.6 tapi cek garis pandang dari arah base tetap lolos
-	-- (badan y=5.0 dan muka y=7.3 terlihat, hanya kaki yang
-	-- mungkin tertutup dari jauh — sama seperti sebelumnya).
+	-- Label nama tier PER MODEL (FIX ROUND 21, perintah bos:
+	-- "masih kecil" + "bikin 8x lipat"): pelat FISIK + SurfaceGui
+	-- DIHAPUS, diganti label tier MENGAMBANG (BillboardGui) di
+	-- tempat yang sama — tepi depan piringan, sisi base, jangkar
+	-- y=4,5. Hitungan 8x-nya ada di komentar dalam loop.
 	for i, kind in ipairs(kinds) do
 		local entry = Config.Roster[kind]
 		-- (Tanpa `continue`: file ini harus lolos `luac -p` Lua 5.1.)
@@ -1475,53 +1461,58 @@ local function buildExhibitionTable()
 			-- buildExhibitionTable -> buildWorld -> seluruh Main saat
 			-- startup (conveyor tidak pernah spawn Brainrot).
 			local modelZ = centerZ
-			-- FIX ROUND 18: pelat pindah ke sisi BASE tiap piringan
-			-- (arah hadap Brainrot yang baru). Arah ke base per
-			-- model: dir = normalisasi (faceTarget - model).
-			-- Pelat di tepi depan piringan (jarak discDiameter/2
-			-- + 0.1 dari pusat model), RENDAH (tinggi 1.6, atas
-			-- y = 4.6) supaya tidak menutupi Brainrot dari arah
-			-- base. Yaw pelat = yaw model - 90°: sumbu tipis
-			-- (0.15) searah hadap, sumbu lebar (6) melintang;
-			-- Face Right (+X lokal) menunjuk ke base.
-			-- FIX ROUND 20: TextSize 48, pelat 6x1.6 (dulu 4x1.0,
-			-- TextSize 28) — teks ~2x lebih besar, tetap muat
-			-- satu baris ("Ultra Rare" terpanjang, ~228 px dari
-			-- 300 px lebar pelat).
+			-- FIX ROUND 21 (20 Nov, perintah bos: "masih kecil" +
+			-- "bikin 8x lipat"): pelat FISIK + SurfaceGui DIHAPUS,
+			-- diganti label tier MENGAMBANG (BillboardGui) — teks
+			-- di pelat menyusut kalau kamera menjauh (SurfaceGui
+			-- terikat ukuran dunia), sedangkan BillboardGui ukuran
+			-- piksel TETAP besar di layar dari jarak berapa pun.
+			-- Jujur soal 8x (dihitung /tmp/check_r21_geo.py):
+			-- 8x literal TIDAK MUNGKIN — teks "Uncommon" 8x butuh
+			-- label 858 px, menelan ~5 model tetangga (slot cuma
+			-- 7 stud = ~184 px di layar); pelat fisik mentok di
+			-- TextSize 65 (1,36x dari 48). Yang dipakai:
+			-- BillboardGui 220x80 px, TextScaled — font 42-80 px
+			-- di layar (tergantung panjang tier), vs teks pelat
+			-- ~21 px di foto bos (jarak ~27 stud): 2,1-3,9x dari
+			-- pelat round 20, 3,5-6,7x dari pelat asli TextSize
+			-- 28; pengali MEMBESAR kalau kamera menjauh (D=40:
+			-- 3,0-5,8x; D=60: 4,6-8,7x). Posisi label SAMA
+			-- seperti pelat dulu: tepi depan piringan sisi base
+			-- (2,6 stud dari pusat model), jangkar y=4,5; atas
+			-- label y~6,4 di jarak 27 stud — muka (y=7,3) tetap
+			-- terlihat, hanya kaki/bawah badan yang tertutup pil
+			-- gelapnya (sama seperti pelat). Background gelap
+			-- TextLabel adalah "pelat" barunya.
 			local pdx = faceTargetX - modelX
 			local pdz = faceTargetZ - modelZ
 			local plen = math.sqrt(pdx * pdx + pdz * pdz)
 			local pdirX, pdirZ = pdx / plen, pdz / plen
-			local plateX = modelX + pdirX * (discDiameter / 2 + 0.1)
-			local plateZ = modelZ + pdirZ * (discDiameter / 2 + 0.1)
-			local modelYaw = math.atan2(pdx, pdz)
-			local labelPlate = makePart(
-				"ExhibitionTierLabel",
-				Vector3.new(0.15, 1.6, 6),
-				Vector3.new(plateX, surfaceY + 0.8, plateZ),
-				Enum.Material.SmoothPlastic,
-				Color3.fromRGB(30, 30, 35)
-			)
-			labelPlate.CFrame = CFrame.new(plateX, surfaceY + 0.8, plateZ)
-				* CFrame.Angles(0, modelYaw - math.rad(90), 0)
-			labelPlate.CanCollide = false
-			local labelGui = Instance.new("SurfaceGui")
-			labelGui.Name = "ExhibitionTierLabelGui"
-			labelGui.Face = Enum.NormalId.Right
-			labelGui.PixelsPerStud = 50
-			labelGui.LightInfluence = 0
-			labelGui.Parent = labelPlate
-			local labelText = Instance.new("TextLabel")
-			labelText.Name = "Tier"
-			labelText.Size = UDim2.new(1, 0, 1, 0)
-			labelText.BackgroundTransparency = 1
-			labelText.Text = entry.Rarity
-			labelText.TextColor3 = entry.Color
-			labelText.TextScaled = false
-			labelText.TextSize = 48
-			labelText.TextWrapped = true
-			labelText.Font = Enum.Font.GothamBold
-			labelText.Parent = labelGui
+			local disc = discs[kind]
+			if disc then
+				local tierGui = Instance.new("BillboardGui")
+				tierGui.Name = "ExhibitionTierGui"
+				tierGui.Size = UDim2.fromOffset(220, 80)
+				tierGui.StudsOffsetWorldSpace = Vector3.new(
+					pdirX * (discDiameter / 2 + 0.1),
+					4.5 - (surfaceY + discHeight / 2),
+					pdirZ * (discDiameter / 2 + 0.1)
+				)
+				tierGui.AlwaysOnTop = true
+				tierGui.LightInfluence = 0
+				tierGui.Parent = disc
+				local tierText = Instance.new("TextLabel")
+				tierText.Name = "Tier"
+				tierText.Size = UDim2.new(1, 0, 1, 0)
+				tierText.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+				tierText.BackgroundTransparency = 0
+				tierText.Text = entry.Rarity
+				tierText.TextColor3 = entry.Color
+				tierText.TextScaled = true
+				tierText.TextWrapped = false
+				tierText.Font = Enum.Font.GothamBold
+				tierText.Parent = tierGui
+			end
 			end
 	end
 	-- 4 tiang lampion di sudut meja (di tanah, di luar meja):
