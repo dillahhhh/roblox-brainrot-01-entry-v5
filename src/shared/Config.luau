@@ -603,6 +603,15 @@ Config.EXHIBITION_DISC_DIAMETER = 5
 Config.EXHIBITION_DISC_HEIGHT = 0.2
 Config.EXHIBITION_SIGN_TEXT = "PAMERAN BRAINROT"
 Config.EXHIBITION_SIGN_TEXT_SIZE = 28
+-- FIX ROUND 17 (20 Nov, perintah bos: label pameran harus lurus
+-- horizontal, tidak miring): semua label nama Brainrot pameran
+-- dipaksa ke SATU ketinggian dunia yang sama (11.0) — 1.2 stud di
+-- atas fitur tertinggi ketujuh jenis (AnjingBrokoli BroccoliHead,
+-- puncak lokal 3.3 -> dunia 3.2 + 3.3*2.0 = 9.8). Label default
+-- dari createBrainrotModel (kepala + 1.6*skala = 10.5) sudah sama
+-- untuk semua jenis, tapi dipaksa eksplisit di sini supaya tetap
+-- rata bila tinggi kepala/fitur berubah di round berikut.
+Config.EXHIBITION_LABEL_WORLD_Y = 11.0
 
 -- Kabel lampion (FIX ROUND 7, foto image-37.png): kabel tipis di
 -- atas tiap rentang lampion sisi jalan (y = LANTERN_CABLE_Y,

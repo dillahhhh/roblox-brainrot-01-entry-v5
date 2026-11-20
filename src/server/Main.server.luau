@@ -1359,12 +1359,14 @@ local function buildExhibitionTable()
 	signText.Parent = signGui
 	-- 7 Brainrot pajangan (FIX ROUND 16, perintah bos: pameran cuma
 	-- 7 Brainrot, meja dipotong): 7 jenis ASLI (Config.EXHIBITION_KINDS,
-	-- satu per tier), SATU BARIS di tengah meja (z = centerZ), kolom
-	-- 7 stud (x = centerX - 21 .. centerX + 21). Tiap model berdiri
-	-- di atas PIRINGAN warna rarity-nya sendiri, dan tiap model
-	-- punya LABEL NAMA TIER sendiri di sisi selatan (lihat di bawah).
-	-- Model menghadap barat (-X, ke arah spawn). Tanpa prompt,
-	-- tanpa remote. 28 jenis baru TIDAK dipajang (Index tetap 35).
+	-- satu per tier), SATU BARIS HORIZONTAL di tengah meja
+	-- (z = centerZ), kolom 7 stud (x = centerX - 21 .. centerX + 21).
+	-- Tiap model berdiri di atas PIRINGAN warna rarity-nya sendiri,
+	-- dan tiap model punya LABEL NAMA TIER sendiri TEGAK di depan
+	-- (sisi barat, menghadap spawn — FIX ROUND 17). Model
+	-- menghadap spawn dengan yaw per model (bukan -90 tetap).
+	-- Tanpa prompt, tanpa remote. 28 jenis baru TIDAK dipajang
+	-- (Index tetap 35).
 	local surfaceY = topY + topSize.Y / 2
 	local spacingX = Config.EXHIBITION_SPACING_X
 	local kinds = Config.EXHIBITION_KINDS
@@ -1392,18 +1394,49 @@ local function buildExhibitionTable()
 			if model then
 				model.Name = "ExhibitionBrainrot_" .. kind
 				model.Parent = Workspace
+				-- FIX ROUND 17 (20 Nov, perintah bos: "brain nya
+				-- ngadep tempat spawn"): yaw dihitung PER MODEL ke
+				-- titik spawn persis (Config.SPAWN_POS = 0, 168),
+				-- bukan -90 tetap untuk semua. Mata (+Z lokal
+				-- model) menghadap tepat ke spawn: yaw =
+				-- atan2(dx, dz) dari model ke spawn.
+				local spawnPos = Config.SPAWN_POS
+				local yaw = math.atan2(spawnPos.X - modelX, spawnPos.Z - modelZ)
 				model:PivotTo(CFrame.new(modelX, surfaceY + discHeight, modelZ)
-					* CFrame.Angles(0, math.rad(-90), 0))
+					* CFrame.Angles(0, yaw, 0))
+				-- FIX ROUND 17: label nama dipaksa ke SATU
+				-- ketinggian dunia yang sama
+				-- (Config.EXHIBITION_LABEL_WORLD_Y = 11.0) supaya
+				-- barisan labelnya lurus horizontal, tidak miring.
+				-- Dihitung dari posisi kepala AKTUAL setelah
+				-- PivotTo, jadi tidak bergantung pada asumsi
+				-- tinggi kepala. Hanya label PAMERAN; label
+				-- conveyor/pedestal/dibawa/peti TIDAK disentuh.
+				local head = model:FindFirstChild("Head")
+				local brainLabel = head and head:FindFirstChild("BrainrotLabel")
+				if brainLabel then
+					brainLabel.StudsOffsetWorldSpace = Vector3.new(0, Config.EXHIBITION_LABEL_WORLD_Y - head.Position.Y, 0)
+				end
 			end
 		end
 	end
-	-- Label nama tier PER MODEL (FIX ROUND 16: tiap model kini
-	-- tiernya sendiri, jadi tiap model punya labelnya sendiri):
-	-- lempeng datar di atas meja di sisi SELATAN tiap piringan
-	-- (z = centerZ + 4.2, di dalam meja z 156..168), teks warna
-	-- tier menghadap ke atas. Pelat 4x2.5, TextSize 28 — "Ultra
-	-- Rare"/"Legendary" muat satu baris. Antar-pelat 3 stud (pusat
-	-- berjarak 7) — tidak bertabrakan, tidak menutupi Brainrot.
+	-- Label nama tier PER MODEL (FIX ROUND 17, perintah bos:
+	-- "raritynya jangan miring harus pas depan brain sesuai rank"
+	-- + "awas aja nutupin brainya"): pelat TEGAK (upright) tepat
+	-- di DEPAN tiap Brainrot — sisi BARAT piringan (arah spawn),
+	-- menghadap spawn (Face Left), TIDAK rebah dan TIDAK miring.
+	-- Round 16 menaruh pelat REBAH (Face Top) di sisi SELATAN
+	-- tiap piringan — dari spawn pelat itu terlihat miring/
+	-- foreshortened, dan bukan di depan Brainrot.
+	-- Pelat RENDAH (tinggi 1.0, atas y = 4.0) di tepi depan
+	-- piringan (pusat x = modelX - 2.6, tepat di luar piringan
+	-- diameter 5): dari kamera spawn, pelat hanya menutupi kaki/
+	-- bawah badan paling bawah dari jauh; badan, kepala, muka,
+	-- dan ciri khas Brainrot tetap terlihat utuh. Makin dekat
+	-- pemain ke meja, makin sedikit yang tertutup. Pelat 4 lebar
+	-- (sumbu Z) x 1.0 tinggi, TextSize 28 — "Ultra Rare"/
+	-- "Legendary" muat satu baris. Antar-pelat 7 stud (pusat
+	-- berjarak 7) — tidak bertabrakan.
 	for i, kind in ipairs(kinds) do
 		local entry = Config.Roster[kind]
 		-- (Tanpa `continue`: file ini harus lolos `luac -p` Lua 5.1.)
@@ -1411,15 +1444,15 @@ local function buildExhibitionTable()
 			local modelX = centerX + (i - (#kinds + 1) / 2) * spacingX
 			local labelPlate = makePart(
 				"ExhibitionTierLabel",
-				Vector3.new(4, 0.1, 2.5),
-				Vector3.new(modelX, surfaceY + 0.05, centerZ + 4.2),
+				Vector3.new(0.15, 1.0, 4),
+				Vector3.new(modelX - (discDiameter / 2 + 0.1), surfaceY + 0.5, modelZ),
 				Enum.Material.SmoothPlastic,
 				Color3.fromRGB(30, 30, 35)
 			)
 			labelPlate.CanCollide = false
 			local labelGui = Instance.new("SurfaceGui")
 			labelGui.Name = "ExhibitionTierLabelGui"
-			labelGui.Face = Enum.NormalId.Top
+			labelGui.Face = Enum.NormalId.Left
 			labelGui.PixelsPerStud = 50
 			labelGui.LightInfluence = 0
 			labelGui.Parent = labelPlate
