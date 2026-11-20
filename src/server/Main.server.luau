@@ -306,7 +306,7 @@ local function buildOneBase(baseIdx, xCenter, zCenter)
 	-- tema game): rumah joglo/limasan yang TINGGI. Dinding kayu hangat
 	-- 12 stud (y 0.8-12.8, dulu 8) dengan bukaan jendela, atap
 	-- limasan 2 bidang miring + bubungan + overhang, teras depan
-	-- (kanopi + tiang), kusen pintu depan, trim warna hangat.
+	-- (kanopi + tiang), trim warna hangat.
 	-- Depan TERBUKA menghadap pusat/conveyor. ANGKA ATAP (cek nyata):
 	-- dinding atas y 12.8, lis atap (eave) y 12.6, bubungan y 18.2,
 	-- balok bubungan atas y 18.7, hiasan ujung bubungan atas y 19.7 —
@@ -315,8 +315,8 @@ local function buildOneBase(baseIdx, xCenter, zCenter)
 	-- berubah; dinding 1 stud ke dalam dari kaca lock (x ±27 / z ±22
 	-- terhadap kaca ±28 / ±23); footprint tetap dalam lantai 56x46.
 	-- Dinding samping di z ±22 berjarak 13 stud dari pedestal z ±9,
-	-- jadi prompt pedestal (jarak 12) tidak terhalang; tiang/kusen
-	-- depan di tepi lantai, bukan di jalur pedestal.
+	-- jadi prompt pedestal (jarak 12) tidak terhalang; tiang depan
+	-- di tepi lantai, bukan di jalur pedestal.
 	local inward = (xCenter < 0) and 1 or -1 -- arah dari base ke pusat (x=0)
 	local backX = xCenter - inward * 27 -- dinding belakang (sisi luar base)
 	local frontX = xCenter + inward * 27 -- tepi depan yang terbuka
@@ -375,32 +375,25 @@ local function buildOneBase(baseIdx, xCenter, zCenter)
 		Enum.Material.Wood,
 		trimColor
 	)
-	-- Kusen pintu depan (tengah bukaan, menghadap conveyor): 2 tiang
-	-- + ambang atas; celah jalan 7 stud, tidak menghalangi pedestal.
-	for _, sideSign in ipairs({ -1, 1 }) do
-		makePart(
-			"BaseHouseDoorPost" .. baseIdx,
-			Vector3.new(1, 8, 1),
-			Vector3.new(frontX, 4.8, zCenter + sideSign * 3.5),
-			Enum.Material.Wood,
-			darkWood
-		)
-	end
-	makePart(
-		"BaseHouseDoorLintel" .. baseIdx,
-		Vector3.new(1, 0.8, 8),
-		Vector3.new(frontX, 9.2, zCenter),
-		Enum.Material.Wood,
-		trimColor
-	)
+	-- FIX ROUND 25 (20 Nov, perintah bos "kayu pintu itu hapus"):
+	-- kusen pintu depan DIHAPUS total (dulu: 2 tiang
+	-- "BaseHouseDoorPost" 1x8x1 di frontX y 4.8 z ±3.5 + ambang atas
+	-- "BaseHouseDoorLintel" 1x0.8x8 di frontX y 9.2) — bukaan pintu
+	-- sekarang polos tanpa kayu. Atap TIDAK kehilangan penopang:
+	-- tiang kusen itu hanya setinggi 8.8 (atas y 8.8) dan ambang
+	-- 9.6 — keduanya jauh di bawah lis atap (y 12.6) dan balok depan
+	-- (y 11.8-12.8); atap ditopang dinding 12 stud + 2 tiang joglo
+	-- depan (12 stud, atas y 12.8) + balok depan — ketiganya TETAP.
+	-- Teras, tiang teras, dan kanopi juga TETAP.
 	-- Teras depan: lantai teras rata dengan lantai base (atas y 0.8),
 	-- menjorok 6 stud ke arah conveyor; 2 tiang teras + kanopi miring
 	-- di atasnya. FIX ROUND 6 (20 Nov, perintah bos "hiasan depan base
 	-- ilangin aja, yang warna warni"): keset merah di depan pintu
 	-- DIHAPUS — itu satu-satunya hiasan warna-warni non-struktural di
-	-- depan base. Teras, tiang teras, kanopi, tiang joglo, balok, dan
-	-- kusen pintu (semua balok/kayu) DIBIARKAN, sesuai "kalo yang ada
-	-- baloknya diemin".
+	-- depan base. Teras, tiang teras, kanopi, tiang joglo, dan balok
+	-- DIBIARKAN, sesuai "kalo yang ada baloknya diemin" (FIX ROUND
+	-- 25: kusen pintu adalah PENGECUALIAN baru — dihapus atas
+	-- perintah bos "kayu pintu itu hapus", lihat catatan di atas).
 	local terrace = makePart(
 		"BaseTerrace" .. baseIdx,
 		Vector3.new(6, 0.8, 30),
@@ -596,6 +589,11 @@ local function buildOneBase(baseIdx, xCenter, zCenter)
 	-- ini tetap TIDAK solid walau terkunci (FIX ROUND 3, item 6) —
 	-- pintu hanya pemicu Touched (teleport bukan pemilik), pemilik
 	-- lewat bebas. 3 dinding kaca lainnya tetap solid saat terkunci.
+	-- FIX ROUND 25: tinggi kaca 6 -> 9,2 stud (tengah y 5,4, atas
+	-- y 10,0) — kaca lama (atas y 6,8) bisa DILOMPATI (lompat
+	-- ~7,2 stud) lewat pintu maupun lewat jendela dinding (bukaan
+	-- y 3,8-9,8). Atas y 10,0 menutup jendela penuh dan di atas
+	-- puncak lompat; tetap di bawah lis atap (y 12,6).
 	local function addGlass(name, size, position, isDoor)
 		local glass = Instance.new("Part")
 		glass.Name = name
@@ -613,12 +611,12 @@ local function buildOneBase(baseIdx, xCenter, zCenter)
 		table.insert(glassParts, glass)
 	end
 	-- Dinding utara/selatan (sepanjang x) dan timur/barat (sepanjang z).
-	addGlass("LockGlassN" .. baseIdx, Vector3.new(56, 6, 0.5), Vector3.new(xCenter, 3.8, zCenter - 23))
-	addGlass("LockGlassS" .. baseIdx, Vector3.new(56, 6, 0.5), Vector3.new(xCenter, 3.8, zCenter + 23))
+	addGlass("LockGlassN" .. baseIdx, Vector3.new(56, 9.2, 0.5), Vector3.new(xCenter, 5.4, zCenter - 23))
+	addGlass("LockGlassS" .. baseIdx, Vector3.new(56, 9.2, 0.5), Vector3.new(xCenter, 5.4, zCenter + 23))
 	-- Pintu menghadap conveyor: base kiri (xCenter -68) -> sisi timur,
 	-- base kanan (xCenter +68) -> sisi barat.
-	addGlass("LockGlassW" .. baseIdx, Vector3.new(0.5, 6, 46), Vector3.new(xCenter - 28, 3.8, zCenter), xCenter > 0)
-	addGlass("LockGlassE" .. baseIdx, Vector3.new(0.5, 6, 46), Vector3.new(xCenter + 28, 3.8, zCenter), xCenter < 0)
+	addGlass("LockGlassW" .. baseIdx, Vector3.new(0.5, 9.2, 46), Vector3.new(xCenter - 28, 5.4, zCenter), xCenter > 0)
+	addGlass("LockGlassE" .. baseIdx, Vector3.new(0.5, 9.2, 46), Vector3.new(xCenter + 28, 5.4, zCenter), xCenter < 0)
 
 	-- Lampu base (PointLight hangat, Range 30).
 	local lightAnchor = Instance.new("Part")
@@ -2337,17 +2335,21 @@ local function refreshSlotVisual(baseIdx, slotIdx)
 		return
 	end
 	model.Parent = Workspace
-	-- FITUR INDEX (20 Nov, perintah bos "brain klo di base saling
-	-- berhadapan"): model pedestal menghadap ke TENGAH base-nya
-	-- sendiri. Muka model = sisi mata (sumbu +Z lokal): yaw =
-	-- atan2(dx, dz) dari arah pedestal -> pusat base, jadi pedestal
-	-- yang berseberangan saling berhadapan. HANYA pedestal base —
-	-- conveyor, dibawa, peti, pameran tidak diubah arahnya.
+	-- FIX ROUND 25 (20 Nov, perintah bos "bikin brain menghadap
+	-- keluar"): model pedestal menghadap KELUAR dari base-nya —
+	-- menjauhi pusat base, menghadap plaza/conveyor — supaya muka
+	-- kelihatan dari luar. Muka model = sisi mata (sumbu +Z lokal):
+	-- yaw = atan2(dx, dz) dari arah pusat base -> pedestal. Dulu
+	-- (FITUR INDEX, perintah "saling berhadapan") arahnya dibalik
+	-- (pedestal -> pusat base) sehingga dari luar cuma kelihatan
+	-- punggung. HANYA pedestal base — conveyor, dibawa, peti,
+	-- pameran (tetap menghadap base terdekat (68, 90), round 18)
+	-- tidak diubah arahnya.
 	local yaw = 0
 	local center = World.BaseCenter and World.BaseCenter[baseIdx]
 	if center ~= nil then
-		local dx = center.X - pos.X
-		local dz = center.Z - pos.Z
+		local dx = pos.X - center.X
+		local dz = pos.Z - center.Z
 		if dx ~= 0 or dz ~= 0 then
 			yaw = math.atan2(dx, dz)
 		end
@@ -2668,6 +2670,10 @@ end
 -- kanan [40,96]) ke arah conveyor. Pemilik SELALU lolos (tidak di-teleport).
 -- Saat tidak terkunci barrier tidak menghalangi (CanCollide false,
 -- Transparency 1); handler tetap memeriksa isLocked.
+-- FIX ROUND 25: handler ini BUKAN satu-satunya pertahanan lagi —
+-- kaca ditinggikan ke 9,2 stud (tidak bisa dilompati) + lockZoneTick
+-- di loop 1 detik mengusir non-owner yang lolos masuk lewat celah
+-- apa pun (tunneling/lompat). Lihat lockZoneTick di bawah.
 local LockTeleportAt = {} -- [Player] -> os.clock() teleport terakhir (debounce 1 detik)
 local function connectLockBarriers()
 	for baseIdx = 1, Config.BASE_COUNT do
@@ -2710,6 +2716,55 @@ local function connectLockBarriers()
 						hrp.CFrame = CFrame.new(targetX, 4, zCenter)
 					end
 				end)
+			end
+		end
+	end
+end
+
+-- FIX ROUND 25 (20 Nov, perintah bos "orang masih bisa masuk ke base
+-- walau udah di kunci"): zona terkunci di-cek TERUS di tick 1 detik
+-- sebagai jaring pengaman barrier Touched. Barrier saja tidak cukup:
+-- (1) kaca pintu TIDAK solid (pemilik lewat bebas) sehingga pemain
+-- lari 28 stud/detik bisa menembus kaca 0,5 stud tanpa Touched
+-- sempat fire (tunneling); (2) kaca lama hanya 6 stud sehingga bisa
+-- DILOMPATI lewat pintu maupun jendela — Touched tidak fire kalau
+-- tidak menyentuh kaca. Sekali lolos masuk, tidak ada yang mengusir
+-- (tick lama hanya income/lock-expiry/flood/peti). lockZoneTick:
+-- tiap detik, untuk tiap base yang TERKUNCI dan ada pemiliknya,
+-- teleport non-owner yang HumanoidRootPart-nya berada DI DALAM
+-- interior base (|dx| < 27, |dz| < 22, y < 12 — dinding di ±27/±22,
+-- teras di luar batas ini) keluar ke target yang SAMA dengan barrier
+-- (DoorX ± 6 ke arah conveyor) + Notify "Base terkunci!". Debounce
+-- 1 detik dipakai BERSAMA handler Touched (LockTeleportAt) supaya
+-- tidak teleport ganda. Pemilik SELALU lolos; base tidak terkunci /
+-- tanpa pemilik tidak dicek; curi di base tidak terkunci tetap jalan
+-- (Steal.trySteal menolak saat terkunci).
+local function lockZoneTick()
+	local now = os.clock()
+	for baseIdx = 1, Config.BASE_COUNT do
+		local owner = BaseOwner[baseIdx]
+		if owner ~= nil and isLocked(owner, now) then
+			local xCenter = Config.BASE_X[(baseIdx <= 4) and 1 or 2]
+			local row = (baseIdx <= 4) and baseIdx or (baseIdx - 4)
+			local zCenter = Config.BASE_Z[row]
+			local doorX = (xCenter < 0) and (xCenter + 27) or (xCenter - 27)
+			local targetX = (xCenter < 0) and (doorX + 6) or (doorX - 6)
+			for _, player in ipairs(PlayersService:GetPlayers()) do
+				if player ~= owner then
+					local character = player.Character
+					local hrp = character and character:FindFirstChild("HumanoidRootPart")
+					if hrp ~= nil then
+						local p = hrp.Position
+						if math.abs(p.X - xCenter) < 27 and math.abs(p.Z - zCenter) < 22 and p.Y < 12 then
+							local lastTeleport = LockTeleportAt[player]
+							if lastTeleport == nil or now - lastTeleport >= 1 then
+								LockTeleportAt[player] = now
+								hrp.CFrame = CFrame.new(targetX, 4, zCenter)
+								Remotes.Notify:FireClient(player, "Base terkunci!")
+							end
+						end
+					end
+				end
 			end
 		end
 	end
@@ -3737,11 +3792,13 @@ end
 -- Stage 2: tambah incomeTick -> Economy.addIncome(Players, Remotes).
 -- Stage 3: tambah lockExpiryTick (auto-unlock, DESIGN.md 19.1).
 -- Stage 4: tambah floodTick + crateExpiryTick (DESIGN.md 19.2/19.3).
+-- FIX ROUND 25: tambah lockZoneTick (usir non-owner dari base terkunci).
 task.spawn(function()
 	while true do
 		task.wait(1)
 		incomeTick()
 		lockExpiryTick()
+		lockZoneTick() -- FIX ROUND 25: base terkunci kedap (lihat lockZoneTick)
 		floodTick()
 		crateExpiryTick()
 		droppedExpiryTick() -- FIX ROUND 16: item jatuh kedaluwarsa 60 detik
